@@ -1,0 +1,15 @@
+# Godot 4+ specific ignores
+.godot/
+.import/
+.export/
+.export_presets.cfg
+/android/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Optional: Git LFS per asset grandi
+*.png filter=lfs
+*.wav filter=lfs
+*.ogg filter=lfs
