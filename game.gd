@@ -81,6 +81,7 @@ func handle_choice(choice):
 				if not "spada" in inventory:
 					inventory.append("spada")
 					text.text = "Hai preso la spada!"
+					await get_tree().create_timer(1.5).timeout
 				show_scene("dragon")
 			"fight_wolf":
 				start_combat(5)
@@ -106,6 +107,10 @@ func attack_enemy():
 	if "spada" in inventory:
 		damage = 4
 	current_enemy_health -= damage
+	text.text = "Hai inflitto %d danni!" % damage
+	update_stats()
+	
+	await get_tree().create_timer(1.0).timeout
 	
 	if current_enemy_health <= 0:
 		text.text = "Hai vinto lo scontro!"
@@ -117,6 +122,7 @@ func attack_enemy():
 	# nemico contrattacca
 	health -= 3
 	if health <= 0:
+		update_stats()
 		game_over()
 	else:
 		text.text = "Il nemico ti colpisce! Perdi vita."
@@ -137,5 +143,5 @@ func game_over():
 
 # Funzione helper per rimuovere tutti i collegamenti di un segnale di un pulsante
 func _clear_signals(button: Button) -> void:
-	for conn in button.pressed.get_signal_connection_list():
-		button.pressed.disconnect(conn.target, conn.method)
+	for conn in button.pressed.get_connections():
+		button.pressed.disconnect(conn.callable)
