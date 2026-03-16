@@ -1,11 +1,11 @@
 extends Control
 
 # --- Riferimenti ai Nodi dell'Interfaccia Utente (UI) ---
-@onready var text = $VBoxContainer/StoryText
-@onready var stats = $VBoxContainer/StatsText
-@onready var b1 = $VBoxContainer/Choice1
-@onready var b2 = $VBoxContainer/Choice2
-@onready var b3 = $VBoxContainer/Choice3
+@onready var text = $CenterContainer/VBoxContainer/StoryText
+@onready var stats = $CenterContainer/VBoxContainer/StatsText
+@onready var b1 = $CenterContainer/VBoxContainer/Choice1
+@onready var b2 = $CenterContainer/VBoxContainer/Choice2
+@onready var b3 = $CenterContainer/VBoxContainer/Choice3
 
 # --- Variabili di Gioco ---
 # Salute del giocatore
