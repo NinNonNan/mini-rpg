@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="MiniRPG"
+run/main_scene="uid://dde07eotaqjpb"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
