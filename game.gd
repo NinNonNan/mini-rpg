@@ -9,6 +9,7 @@ extends Control
 var health = 10
 var inventory = []
 var current_enemy_health = 0
+var current_victory_scene = ""
 
 var story = {
 	"start": {
@@ -37,6 +38,18 @@ var story = {
 		"choices": [
 			{"text": "Combattere", "action": "fight_dragon"},
 			{"text": "Scappare", "next": "start"}
+		]
+	},
+	"forest_victory": {
+		"text": "Hai sconfitto il lupo. La via è libera, ma non c'è altro da vedere qui. Meglio tornare indietro.",
+		"choices": [
+			{"text": "Torna all'inizio", "next": "start"}
+		]
+	},
+	"dragon_victory": {
+		"text": "Hai sconfitto il drago e hai preso il suo tesoro! HAI VINTO!",
+		"choices": [
+			{"text": "Gioca di nuovo", "action": "restart_game"}
 		]
 	}
 }
@@ -84,12 +97,17 @@ func handle_choice(choice):
 					await get_tree().create_timer(1.5).timeout
 				show_scene("dragon")
 			"fight_wolf":
-				start_combat(5)
+				start_combat(5, "forest_victory")
 			"fight_dragon":
-				start_combat(8)
+				start_combat(8, "dragon_victory")
+			"restart_game":
+				health = 10
+				inventory.clear()
+				show_scene("start")
 
-func start_combat(enemy_health):
+func start_combat(enemy_health, victory_scene):
 	current_enemy_health = enemy_health
+	current_victory_scene = victory_scene
 	update_stats()
 	text.text = "Combatti il nemico! HP nemico: %d" % current_enemy_health
 	show_combat_buttons()
@@ -113,10 +131,11 @@ func attack_enemy():
 	await get_tree().create_timer(1.0).timeout
 	
 	if current_enemy_health <= 0:
-		text.text = "Hai vinto lo scontro!"
 		current_enemy_health = 0
+		text.text = "Hai vinto lo scontro!"
 		update_stats()
-		show_scene("start")
+		await get_tree().create_timer(1.5).timeout
+		show_scene(current_victory_scene)
 		return
 	
 	# nemico contrattacca
