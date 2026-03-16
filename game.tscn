@@ -15,7 +15,7 @@ theme = SubResource("Theme_80nbo")
 script = ExtResource("1_80nbo")
 
 [node name="CenterContainer" type="CenterContainer" parent="." unique_id=1423096150]
-custom_minimum_size = Vector2(500, 400)
+custom_minimum_size = Vector2(1280, 720)
 layout_mode = 0
 offset_right = 500.0
 offset_bottom = 400.0

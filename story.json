@@ -1,0 +1,54 @@
+{
+	"items": {
+		"spada": {
+			"damage": 4
+		},
+		"pozione": {
+			"heal": 5,
+			"consumable": true
+		}
+	},
+	"scenes": {
+		"start": {
+			"text": "Benvenuto nel Mini-GDR! Sei davanti a una caverna.",
+			"choices": [
+				{"text": "Entra nella caverna", "next": "cave"},
+				{"text": "Vai nella foresta", "next": "forest"},
+				{"text": "Cerca provviste (Prendi pozione)", "action": "pickup", "item_id": "pozione", "next": "start"}
+			]
+		},
+		"cave": {
+			"text": "Dentro la caverna trovi una spada arrugginita.",
+			"choices": [
+				{"text": "Prendere la spada", "action": "pickup", "item_id": "spada", "next": "dragon"},
+				{"text": "Proseguire", "next": "dragon"}
+			]
+		},
+		"forest": {
+			"text": "Un lupo selvaggio appare!",
+			"choices": [
+				{"text": "Combattere", "action": "combat", "enemy_health": 5, "enemy_damage": 2, "victory_scene": "forest_victory"},
+				{"text": "Scappare", "next": "start"}
+			]
+		},
+		"dragon": {
+			"text": "Un piccolo drago protegge un tesoro.",
+			"choices": [
+				{"text": "Combattere", "action": "combat", "enemy_health": 8, "enemy_damage": 4, "victory_scene": "dragon_victory"},
+				{"text": "Scappare", "next": "start"}
+			]
+		},
+		"forest_victory": {
+			"text": "Hai sconfitto il lupo. La via è libera, ma non c'è altro da vedere qui. Meglio tornare indietro.",
+			"choices": [
+				{"text": "Torna all'inizio", "next": "start"}
+			]
+		},
+		"dragon_victory": {
+			"text": "Hai sconfitto il drago e hai preso il suo tesoro! HAI VINTO!",
+			"choices": [
+				{"text": "Gioca di nuovo", "action": "restart"}
+			]
+		}
+	}
+}

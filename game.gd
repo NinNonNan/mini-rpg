@@ -14,54 +14,15 @@ var health = 10
 var inventory = []
 # Salute del nemico corrente (0 se non si è in combattimento)
 var current_enemy_health = 0
+# Danno del nemico corrente
+var current_enemy_damage = 0
 # Scena da mostrare in caso di vittoria nel combattimento corrente
 var current_victory_scene = ""
 
-# --- Struttura della Storia ---
-# Dizionario principale che contiene tutta la storia del gioco.
-# Ogni chiave è un nome di scena, che contiene il testo e le scelte possibili.
-var story = {
-	"start": {
-		"text": "Benvenuto nel Mini-GDR! Sei davanti a una caverna.",
-		"choices": [
-			{"text": "Entra nella caverna", "next": "cave"},
-			{"text": "Vai nella foresta", "next": "forest"}
-		]
-	},
-	"cave": {
-		"text": "Dentro la caverna trovi una spada arrugginita.",
-		"choices": [
-			{"text": "Prendere la spada", "action": "take_sword"},
-			{"text": "Proseguire", "next": "dragon"}
-		]
-	},
-	"forest": {
-		"text": "Un lupo selvaggio appare!",
-		"choices": [
-			{"text": "Combattere", "action": "fight_wolf"},
-			{"text": "Scappare", "next": "start"}
-		]
-	},
-	"dragon": {
-		"text": "Un piccolo drago protegge un tesoro.",
-		"choices": [
-			{"text": "Combattere", "action": "fight_dragon"},
-			{"text": "Scappare", "next": "start"}
-		]
-	},
-	"forest_victory": {
-		"text": "Hai sconfitto il lupo. La via è libera, ma non c'è altro da vedere qui. Meglio tornare indietro.",
-		"choices": [
-			{"text": "Torna all'inizio", "next": "start"}
-		]
-	},
-	"dragon_victory": {
-		"text": "Hai sconfitto il drago e hai preso il suo tesoro! HAI VINTO!",
-		"choices": [
-			{"text": "Gioca di nuovo", "action": "restart_game"}
-		]
-	}
-}
+# Dizionario che conterrà la storia del gioco, caricata da un file JSON.
+var story = {}
+# Dizionario che conterrà i dati degli oggetti (es. danni armi)
+var item_data = {}
 
 # Tiene traccia della scena corrente
 var current_scene = "start"
@@ -78,7 +39,28 @@ func _ready():
 	b1.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
 	b2.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
 	b3.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
+	
+	_load_story()
 	show_scene(current_scene)
+
+# Carica i dati della storia dal file story.json
+func _load_story():
+	var file_path = "res://story.json"
+	
+	if not FileAccess.file_exists(file_path):
+		text.text = "ERRORE: File della storia non trovato!\nAssicurati che 'story.json' sia nella cartella del progetto."
+		push_error("File della storia non trovato in: " + file_path)
+		return
+
+	var file = FileAccess.open(file_path, FileAccess.READ)
+	var json_data = JSON.parse_string(file.get_as_text())
+	
+	if json_data and typeof(json_data) == TYPE_DICTIONARY:
+		story = json_data.get("scenes", {})
+		item_data = json_data.get("items", {})
+	else:
+		text.text = "ERRORE: Il file della storia ('story.json') è corrotto o malformato."
+		push_error("Errore nel parsing del file JSON della storia.")
 
 # Aggiorna il testo delle statistiche del giocatore e del nemico.
 func update_stats():
@@ -111,32 +93,37 @@ func show_scene(name):
 
 # Gestisce la logica quando un pulsante di scelta viene premuto.
 func handle_choice(choice):
-	if choice.has("next"):
-		show_scene(choice["next"])
-		return
+	# 1. Gestione Azioni Generiche (basate sui dati del JSON)
 	if choice.has("action"):
 		match choice["action"]:
-			# Azione per prendere la spada
-			"take_sword":
-				if not "spada" in inventory:
-					inventory.append("spada")
-					text.text = "Hai preso la spada!"
-					await get_tree().create_timer(1.5).timeout
-				show_scene("dragon")
-			"fight_wolf":
-				# Inizia il combattimento con il lupo
-				start_combat(5, "forest_victory")
-			"fight_dragon":
-				# Inizia il combattimento con il drago
-				start_combat(8, "dragon_victory")
-			"restart_game":
-				# Resetta il gioco
+			"pickup":
+				# Legge quale oggetto prendere dal JSON
+				var item = choice.get("item_id", "oggetto")
+				if not item in inventory:
+					inventory.append(item)
+					text.text = "Hai preso: " + item
+					update_stats()
+					await get_tree().create_timer(1.0).timeout
+			"combat":
+				# Legge la vita del nemico e la scena di vittoria dal JSON
+				var hp = choice.get("enemy_health", 5)
+				var dmg = choice.get("enemy_damage", 2)
+				var victory = choice.get("victory_scene", "start")
+				start_combat(hp, dmg, victory)
+				return # Il combattimento gestisce il flusso, usciamo dalla funzione
+			"restart":
 				health = 10
 				inventory.clear()
 				show_scene("start")
+				return
 
-func start_combat(enemy_health, victory_scene):
+	# 2. Cambio Scena (se definito nel JSON)
+	if choice.has("next"):
+		show_scene(choice["next"])
+
+func start_combat(enemy_health, enemy_damage, victory_scene):
 	current_enemy_health = enemy_health
+	current_enemy_damage = enemy_damage
 	current_victory_scene = victory_scene
 	update_stats()
 	text.text = "Combatti il nemico! HP nemico: %d" % current_enemy_health
@@ -155,11 +142,37 @@ func show_combat_buttons():
 	b2.pressed.connect(func(): flee_combat(), CONNECT_ONE_SHOT)
 	
 	b3.hide()
+	# Cerca nell'inventario se c'è un oggetto con la proprietà "heal"
+	for item_id in inventory:
+		if item_data.has(item_id) and item_data[item_id].has("heal"):
+			b3.text = "Usa " + item_id
+			b3.show()
+			_clear_signals(b3)
+			b3.pressed.connect(func(): use_item(item_id), CONNECT_ONE_SHOT)
+			break # Per ora gestiamo solo il primo oggetto curativo trovato
+
+func use_item(item_id):
+	var stats = item_data[item_id]
+	var heal_amount = stats.get("heal", 0)
+	
+	health = min(health + heal_amount, 10) # Cura senza superare il massimo (10)
+	text.text = "Hai usato %s e recuperato %d HP!" % [item_id, heal_amount]
+	
+	if stats.get("consumable", false):
+		inventory.erase(item_id)
+		
+	update_stats()
+	await get_tree().create_timer(1.5).timeout
+	enemy_turn() # Usare un oggetto consuma il turno!
 
 func attack_enemy():
 	var damage = 2
-	if "spada" in inventory:
-		damage = 4
+	# Calcola il danno basandosi sugli oggetti nell'inventario
+	for item_id in inventory:
+		if item_data.has(item_id):
+			var item_stats = item_data[item_id]
+			damage = max(damage, item_stats.get("damage", 0)) # Usa il danno dell'arma migliore
+
 	current_enemy_health -= damage
 	text.text = "Hai inflitto %d danni!" % damage
 	update_stats()
@@ -194,12 +207,12 @@ func flee_combat():
 
 # Gestisce il turno di attacco del nemico.
 func enemy_turn():
-	health -= 3 # Il nemico infligge 3 danni
+	health -= current_enemy_damage
 	update_stats()
 	if health <= 0:
 		game_over() # Se la vita scende a 0 o meno, è game over
 	else:
-		text.text = "Il nemico ti colpisce! Perdi 3 punti vita."
+		text.text = "Il nemico ti colpisce! Perdi %d punti vita." % current_enemy_damage
 		await get_tree().create_timer(1.5).timeout
 		show_combat_buttons() # Mostra di nuovo i pulsanti di combattimento
 		
