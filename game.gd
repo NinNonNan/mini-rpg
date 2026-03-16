@@ -71,6 +71,13 @@ func _ready():
 	# Fa in modo che l'etichetta del testo si espanda per riempire lo spazio verticale,
 	# mantenendo i pulsanti fissi in basso.
 	text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
+
+	# Fa in modo che i pulsanti si espandano orizzontalmente per riempire il contenitore.
+	# Questo dà loro una larghezza uniforme e impedisce all'interfaccia di "saltare"
+	# quando il testo dei pulsanti cambia.
+	b1.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
+	b2.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
+	b3.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
 	show_scene(current_scene)
 
 # Aggiorna il testo delle statistiche del giocatore e del nemico.
