@@ -1,4 +1,26 @@
 {
+	"player": {
+		"icon": "🧙",
+		"energy": [
+			{
+				"type": "life",
+				"value": 10
+			},
+			{
+				"type": "magic",
+				"value": 10
+			},
+			{
+				"type": "mood",
+				"value": 0
+			}
+		]
+	},
+	"energy_types": {
+		"life": { "name": "energy_life", "icon": "❤️" },
+		"magic": { "name": "energy_magic", "icon": "✨" },
+		"mood": { "name": "energy_mood", "icon": "😊" }
+	},
 	"damage_types": {
 		"taglio": {
 			"name": "Taglio",
@@ -12,9 +34,35 @@
 			"name": "Morso",
 			"icon": "🦷"
 		},
-		"sole":{
+		"sole": {
 			"name": "Sole",
 			"icon": "☀️"
+		},
+		"sacro": {
+			"name": "Sacro",
+			"icon": "✨"
+		},
+		"graffio": {
+			"name": "Graffio",
+			"icon": "🐾"
+		},
+		"artiglio": {
+			"name": "Artiglio",
+			"icon": "🐾"
+		}
+	},
+	"spells": {
+		"fireball": {
+			"name": "spell_fireball",
+			"type": "fuoco",
+			"cost": 3,
+			"damage": 6
+		},
+		"heal": {
+			"name": "spell_heal",
+			"type": "sacro",
+			"cost": 4,
+			"heal": 5
 		}
 	},
 	"items": {
@@ -50,15 +98,37 @@
 	"entities": {
 		"wolf": {
 			"name": "Lupo",
-			"health": 5.0,
-			"damage": 2.0,
+			"energy": [
+				{
+					"type": "life",
+					"value": 5.0
+				},
+				{
+					"type": "mood",
+					"value": -1.0
+				}
+			],
+			"damage": [
+				{
+					"amount": 2.0,
+					"type": "morso"
+				}
+			],
 			"weaknesses": ["fuoco"],
-			"mood": -1.0,
 			"pronoun": "il"
 		},
 		"dragon": {
 			"name": "Drago",
-			"health": 8.0,
+			"energy": [
+				{
+					"type": "life",
+					"value": 8.0
+				},
+				{
+					"type": "mood",
+					"value": -1.0
+				}
+			],
 			"damage": [
 				{
 					"amount": 3.0,
@@ -70,12 +140,21 @@
 				}
 			],
 			"immunities": ["fuoco"],
-			"mood": -1.0,
-			"pronoun": "il"
+			"pronoun": "il",
+			"icon": "🐉"
 		},
 		"vampire": {
 			"name": "Vampiro",
-			"health": 10.0,
+			"energy": [
+				{
+					"type": "life",
+					"value": 10.0
+				},
+				{
+					"type": "mood",
+					"value": 10.0
+				}
+			],
 			"damage": [
 				{
 					"amount": 2.0,
@@ -87,7 +166,6 @@
 				}
 			],
 			"weaknesses": ["fuoco", "taglio", "sole"],
-			"mood": 10.0,
 			"pronoun": "il"
 		}
 	},

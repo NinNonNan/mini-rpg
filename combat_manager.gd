@@ -28,7 +28,7 @@ extends Node  # Non è un elemento visivo, quindi basta Node
 #
 # combat_manager.game = self
 #
-var game: Game
+var game
 
 
 # =========================================================
@@ -75,6 +75,11 @@ func start_combat(entity_id: String, victory_scene: String):
 	# Mostra i pulsanti di combattimento
 	show_combat_buttons()
 
+# Modifica l'energia dell'entità corrente (Chiamato da SpecialManager per infliggere danni)
+func modify_current_entity_energy(type_id: String, amount: int):
+	# Per ora i nemici hanno solo "life", quindi applichiamo tutto alla salute
+	if type_id == "life":
+		current_entity_health += amount
 
 # =========================================================
 # CONFIGURAZIONE PULSANTI COMBATTIMENTO
@@ -93,44 +98,118 @@ func show_combat_buttons():
 	game.b1.pressed.connect(attack_entity, CONNECT_ONE_SHOT)
 
 	# -----------------------------------------------------
-	# PULSANTE 2 : FUGA
+	# PULSANTE 2 : ABILITÀ / SPECIAL
 	# -----------------------------------------------------
-	game.b2.text = game.tr("combat_choice_flee")
+	
+	game.b2.text = game.tr("combat_choice_special")
 	game.b2.show()
 
 	game._clear_signals(game.b2)
-	game.b2.pressed.connect(flee_combat, CONNECT_ONE_SHOT)
+	game.b2.pressed.connect(open_special_menu)
 
 	# -----------------------------------------------------
-	# PULSANTE 3 : ANALISI O OGGETTO
+	# PULSANTE 3 : FUGA
 	# -----------------------------------------------------
 
-	game.b3.hide()
+	game.b3.text = game.tr("combat_choice_flee")
+	game.b3.show()
 
-	# Se il nemico non è ancora conosciuto
-	if game.empathy_manager and not game.empathy_manager.is_known:
+	game._clear_signals(game.b3)
+	game.b3.pressed.connect(flee_combat, CONNECT_ONE_SHOT)
 
-		game.b3.text = game.tr("combat_choice_analyze")
-		game.b3.show()
 
-		game._clear_signals(game.b3)
-		game.b3.pressed.connect(analyze_turn, CONNECT_ONE_SHOT)
+# =========================================================
+# MENU ABILITÀ
+# =========================================================
 
+func open_special_menu():
+	# Controllo di sicurezza: se il manager non è caricato, interrompi per evitare crash
+	if not game.special_manager:
+		push_error("SpecialManager non trovato! Impossibile aprire il menu abilità.")
+		return
+
+	var all_spells = game.special_manager.spells
+
+	# Configura i pulsanti per mostrare le magie disponibili
+	
+	# Palla di Fuoco (Button 1)
+	if all_spells.has("fireball"):
+		var spell1 = all_spells.get("fireball")
+		var icon1 = game.get_damage_type_icon(spell1.get("type", ""))
+		game.b1.text = "%s %s (%d MP)" % [icon1, game.tr(spell1.name), spell1.cost]
+		game._clear_signals(game.b1)
+		game.b1.pressed.connect(func(): cast_spell_turn("fireball"))
+		game.b1.show()
 	else:
+		game.b1.hide()
+	
+	# Cura (Button 2)
+	if all_spells.has("heal"):
+		var spell2 = all_spells.get("heal")
+		var icon2 = game.get_damage_type_icon(spell2.get("type", ""))
+		game.b2.text = "%s %s (%d MP)" % [icon2, game.tr(spell2.name), spell2.cost]
+		game._clear_signals(game.b2)
+		game.b2.pressed.connect(func(): cast_spell_turn("heal"))
+		game.b2.show()
+	else:
+		game.b2.hide()
+	
+	# Indietro (Button 3)
+	game.b3.text = game.tr("combat_back")
+	game.b3.show()
+	game._clear_signals(game.b3)
+	game.b3.pressed.connect(show_combat_buttons)
 
-		# Se il nemico è già analizzato possiamo usare oggetti
-		var consumable_id = game.item_manager.get_first_consumable()
+func cast_spell_turn(spell_id: String):
+	
+	if not game.special_manager.has_enough_mana(spell_id):
+		var cost = game.special_manager.spells[spell_id].cost
+		game.text.text = game.tr("spell_cost_low") % cost
+		# Piccolo delay per leggere l'errore, poi ricarica menu
+		await get_tree().create_timer(1.0).timeout
+		open_special_menu()
+		return
+		
+	# Esegue la magia
+	game.text.text = game.special_manager.use_spell(spell_id, current_entity_id)
+	game.update_stats()
+	
+	await get_tree().create_timer(1.5).timeout
+	
+	# Controllo vittoria immediato se era danno
+	if current_entity_health <= 0:
+		current_entity_health = 0
+		game.text.text = game.tr("combat_victory")
+		await get_tree().create_timer(1.5).timeout
+		game.show_scene(current_victory_scene)
+		return
+		
+	# Turno nemico
+	entity_turn()
+	
 
-		if consumable_id != "":
+# -- Vecchie funzioni rimosse o sostituite dalla nuova UI --
 
-			var item_name_key = game.item_data.get(consumable_id, {}).get("name", consumable_id)
+# (La funzione analyze_turn e use_item_turn sono momentaneamente rimosse dall'UI 
+# per fare spazio alle abilità, ma la logica rimane nel codice se volessi ripristinarle in sottomenu)
 
-			game.b3.text = game.tr("combat_choice_use_item") % game.tr(item_name_key)
-			game.b3.show()
 
-			game._clear_signals(game.b3)
-			game.b3.pressed.connect(func(): use_item_turn(consumable_id), CONNECT_ONE_SHOT)
-
+#	# Codice precedente per referenza (B3 items/analyze)
+#	# Se il nemico non è ancora conosciuto
+#	if game.empathy_manager and not game.empathy_manager.is_known:
+#		game.b3.text = game.tr("combat_choice_analyze")
+#		game.b3.show()
+#		game._clear_signals(game.b3)
+#		game.b3.pressed.connect(analyze_turn, CONNECT_ONE_SHOT)
+#	else:
+#		# Se il nemico è già analizzato possiamo usare oggetti
+#		var consumable_id = game.item_manager.get_first_consumable()
+#		if consumable_id != "":
+#			var item_name_key = game.item_data.get(consumable_id, {}).get("name", consumable_id)
+#			game.b3.text = game.tr("combat_choice_use_item") % game.tr(item_name_key)
+#			game.b3.show()
+#			game._clear_signals(game.b3)
+#			game.b3.pressed.connect(func(): use_item_turn(consumable_id), CONNECT_ONE_SHOT)
 
 # =========================================================
 # ANALISI DEL NEMICO

@@ -2,23 +2,31 @@ class_name Game
 extends Control
 
 # --- Riferimenti ai Nodi dell'Interfaccia Utente (UI) ---
-@onready var text = $UI/VBC_Main/PC_Text/StoryText
-@onready var player_stats = $UI/VBC_Main/PC_Player/StatsText # Riferimento al box statistiche giocatore
+@onready var text = $UI/VBC_Main/PC_Text/HBC/StoryText
+@onready var player_icon = $UI/VBC_Main/PC_Player/HBC/Icon # Riferimento all'icona giocatore
+@onready var player_stats = $UI/VBC_Main/PC_Player/HBC/StatsText # Riferimento al box statistiche giocatore
 @onready var enemy_stats_box = $UI/VBC_Main/PC_Enemy         # Riferimento al CONTENITORE nemico
-@onready var enemy_stats_text = $UI/VBC_Main/PC_Enemy/StatsText # Riferimento al TESTO nemico
+@onready var enemy_stats_icon = $UI/VBC_Main/PC_Enemy/HBC/Icon # Riferimento all'icona nemico
+@onready var enemy_stats_text = $UI/VBC_Main/PC_Enemy/HBC/StatsText # Riferimento al TESTO nemico
 @onready var b1 = $UI/VBC_Main/VBC_Button/Choice1
 @onready var b2 = $UI/VBC_Main/VBC_Button/Choice2
 @onready var b3 = $UI/VBC_Main/VBC_Button/Choice3
 
 # --- Manager di Sistema ---
-@onready var combat_manager = $Manager/CombatManager as CombatManager
-@onready var dialogue_manager = $Manager/DialogueManager as DialogueManager
-@onready var empathy_manager = $Manager/EmpathyManager as EmpathyManager
-@onready var item_manager = $Manager/ItemManager as ItemManager
+@onready var combat_manager = $Manager/Combat as CombatManager
+@onready var dialogue_manager = $Manager/Dialogue as DialogueManager
+@onready var empathy_manager = $Manager/Empathy as EmpathyManager
+@onready var item_manager = $Manager/Item as ItemManager
+@onready var special_manager = $Manager/Special as SpecialManager
 
 # --- Variabili di Stato del Gioco ---
 # Salute del giocatore
 var health: int = 10
+# Mana del giocatore
+var mana: int = 10
+# Valori massimi (caricati da JSON)
+var max_health: int = 10
+var max_mana: int = 10
 # Inventario del giocatore (contiene gli ID degli oggetti)
 var inventory: Array[String] = []
 # Pronome dell'entità corrente (es: "il", "la")
@@ -34,6 +42,8 @@ var use_visual_health: bool = true
 # --- Database di Gioco (caricati da JSON) ---
 # Contiene tutte le scene narrative del gioco
 var story: Dictionary = {}
+# Contiene tutti i dati del file story.json
+var story_data: Dictionary = {}
 # Database degli oggetti (armi, pozioni, ecc.)
 var item_data: Dictionary = {}
 # Database delle entità (nemici, NPC, ecc.)
@@ -48,9 +58,9 @@ var current_scene: String = "start"
 func _ready():
 	# DEBUG: Verifica che i nodi essenziali siano stati trovati
 	if not text:
-		push_error("ERRORE CRITICO: Nodo 'StoryText' non trovato. Verifica il percorso nella scena.")
+		push_error(tr("error_node_storytext_not_found"))
 	if not player_stats:
-		push_error("ERRORE CRITICO: Nodo 'StatsText' (Player) non trovato. Verifica il percorso '$UI/VBC_Main/PC_Player/StatsText'.")
+		push_error(tr("error_node_playerstats_not_found"))
 	if not enemy_stats_box:
 		# FALLBACK: Se non trova "PC_Enemy", prova a cercare "PC_enemy" (minuscolo)
 		if $UI/VBC_Main.has_node("PC_enemy"):
@@ -59,7 +69,9 @@ func _ready():
 			if enemy_stats_box.has_node("StatsText"):
 				enemy_stats_text = enemy_stats_box.get_node("StatsText")
 		else:
-			push_error("ATTENZIONE: Nodo 'PC_Enemy' (o 'PC_enemy') non trovato in '$UI/VBC_Main'.")
+			push_error(tr("warning_node_enemybox_not_found"))
+	if not special_manager:
+		push_error(tr("error_node_special_not_found"))
 
 	# Impostazioni grafiche per l'interfaccia
 	text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
@@ -76,6 +88,7 @@ func _ready():
 	if item_manager: item_manager.game = self
 	if dialogue_manager: dialogue_manager.game = self
 	if empathy_manager: empathy_manager.game = self
+	if special_manager: special_manager.game = self
 	
 	# Collega i segnali del DialogueManager per gestire l'interfaccia durante i dialoghi
 	if dialogue_manager:
@@ -97,17 +110,32 @@ func _load_story():
 		text.text = tr("error_story_load")
 		return
 
+	# Conserviamo una copia completa di tutti i dati del JSON
+	story_data = json_data
+
 	# Popoliamo i dizionari di gioco con i dati caricati
 	story = json_data.get("scenes", {})
 	item_data = json_data.get("items", {})
 	entity_data = json_data.get("entities", {})
 	damage_types_data = json_data.get("damage_types", {})
+	
+	# Carica dati giocatore
+	var player_data = json_data.get("player", {})
+	if player_data.has("health"):
+		max_health = int(player_data["health"])
+		health = max_health
+	if player_data.has("mana"):
+		max_mana = int(player_data["mana"])
+		mana = max_mana
+
+	if player_icon and player_data.has("icon"):
+		player_icon.text = player_data["icon"]
 
 # Carica il file di traduzione e lo registra nel TranslationServer
 func _load_translations(lang_code: String = "it"):
 	var file_path = "res://%s.json" % lang_code
 	if not FileAccess.file_exists(file_path):
-		push_error("File di traduzione non trovato: %s" % file_path)
+		push_error(tr("error_push_translation_file_not_found") % file_path)
 		text.text = tr("error_translation_file_not_found") % lang_code
 		return
 
@@ -118,7 +146,7 @@ func _load_translations(lang_code: String = "it"):
 	var json_data = JSON.parse_string(content)
 
 	if json_data == null:
-		push_error("Errore nel parsing del JSON di traduzione: %s" % file_path)
+		push_error(tr("error_push_translation_json_parse") % file_path)
 		text.text = tr("error_translation_file_parse") % lang_code
 		return
 
@@ -129,12 +157,39 @@ func _load_translations(lang_code: String = "it"):
 
 	TranslationServer.add_translation(translation)
 
-# Genera una stringa visiva per la salute (es. "❤️❤️❤️" o "3 HP")
+# --- Gestione Energia (Interfaccia per SpecialManager) ---
+
+# Recupera il valore attuale di un tipo di energia (es. "life", "magic")
+func get_player_energy_value(type_id: String) -> int:
+	match type_id:
+		"life": return health
+		"magic": return mana
+	return 0
+
+# Modifica il valore di un'energia del giocatore (gestisce limiti e Game Over)
+func modify_player_energy(type_id: String, amount: int):
+	match type_id:
+		"life":
+			health = clampi(health + amount, 0, max_health)
+			if health <= 0:
+				game_over()
+		"magic":
+			mana = clampi(mana + amount, 0, max_mana)
+	update_stats()
+
+# Genera una stringa visiva per la salute (es. "❤️ 3" o "3 HP")
 func get_health_string(amount: int) -> String:
 	if use_visual_health:
-		return "❤️".repeat(amount)
+		return "❤️ %d" % amount
 	else:
 		return str(amount) + " HP"
+
+# Genera una stringa visiva per il mana (es. "💧 10" o "10 MP")
+func get_mana_string(amount: int) -> String:
+	if use_visual_health:
+		return "💧 %d" % amount
+	else:
+		return str(amount) + " MP"
 
 # Recupera l'icona associata a un tipo di danno (es. "fuoco" -> "🔥")
 func get_damage_type_icon(type_id: String) -> String:
@@ -192,12 +247,20 @@ func update_stats():
 			
 	# Aggiorna il box del giocatore
 	if player_stats:
-		player_stats.text = tr("stats_player") % [get_health_string(health), inventory_string]
+		player_stats.text = tr("stats_player") % [get_health_string(health), get_mana_string(mana), inventory_string]
 	
 	# Aggiorna e gestisce la visibilità del box del nemico
 	if enemy_stats_box and enemy_stats_text:
 		enemy_stats_text.text = entity_text
-		enemy_stats_box.visible = true
+		
+		if enemy_stats_icon:
+			var icon = ""
+			if current_entity_id != "":
+				var entity = entity_data.get(current_entity_id, {})
+				icon = entity.get("icon", "")
+			enemy_stats_icon.text = icon
+
+		enemy_stats_box.visible = show_enemy_stats
 
 # Mostra una scena specifica basata sul suo nome.
 func show_scene(scene_name):
@@ -273,6 +336,7 @@ func handle_choice(choice):
 					var entity_name_key = entity.get("name", current_entity_id)
 					var entity_name = tr(entity_name_key)
 					text.text = tr("encounter_neutral") % entity_name
+					update_stats()
 					
 					b1.text = tr("choice_attack")
 					b1.show()
@@ -290,7 +354,8 @@ func handle_choice(choice):
 					_start_prepared_combat()
 				return # Il flusso viene gestito dall'incontro, non dal cambio scena
 			"restart":
-				health = 10
+				health = max_health
+				mana = max_mana
 				inventory.clear()
 				show_scene("start")
 				return
@@ -338,7 +403,8 @@ func _on_dialogue_choices_requested(choices):
 
 func game_over():
 	text.text = tr("game_over_text")
-	health = 10
+	health = max_health
+	mana = max_mana
 	inventory.clear()
 	
 	# Resetta lo stato dei manager

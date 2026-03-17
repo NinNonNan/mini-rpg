@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://cfht24jt8567h" path="res://combat_manager.gd" id="3_fc0e3"]
 [ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://empathy_manager.gd" id="4_fc0e3"]
 [ext_resource type="Script" uid="uid://bgde6rbxnopxg" path="res://item_manager.gd" id="5_7jktm"]
+[ext_resource type="Script" uid="uid://c0f4lcycq4hn1" path="res://special_manager.gd" id="6_ryrav"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
 
@@ -32,17 +33,48 @@ alignment = 1
 custom_minimum_size = Vector2(400, 50)
 layout_mode = 2
 
-[node name="StoryText" type="Label" parent="UI/VBC_Main/PC_Text" unique_id=173698416]
-custom_minimum_size = Vector2(400, 50)
+[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/PC_Text" unique_id=1912386474]
+layout_mode = 2
+
+[node name="SPL" type="Control" parent="UI/VBC_Main/PC_Text/HBC" unique_id=1223341402]
+custom_minimum_size = Vector2(20, 50)
+layout_mode = 2
+
+[node name="StoryText" type="Label" parent="UI/VBC_Main/PC_Text/HBC" unique_id=173698416]
+custom_minimum_size = Vector2(350, 50)
 layout_mode = 2
 autowrap_mode = 2
+
+[node name="SPR" type="Control" parent="UI/VBC_Main/PC_Text/HBC" unique_id=1898118644]
+custom_minimum_size = Vector2(20, 50)
+layout_mode = 2
 
 [node name="PC_Player" type="PanelContainer" parent="UI/VBC_Main" unique_id=107564743]
 custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 
-[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Player" unique_id=850942249]
-custom_minimum_size = Vector2(400, 50)
+[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/PC_Player" unique_id=1107832990]
+layout_mode = 2
+
+[node name="SPL" type="Control" parent="UI/VBC_Main/PC_Player/HBC" unique_id=50189592]
+custom_minimum_size = Vector2(15, 50)
+layout_mode = 2
+
+[node name="Icon" type="Label" parent="UI/VBC_Main/PC_Player/HBC" unique_id=273744548]
+clip_contents = true
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 45
+horizontal_alignment = 1
+vertical_alignment = 1
+clip_text = true
+
+[node name="SPR" type="Control" parent="UI/VBC_Main/PC_Player/HBC" unique_id=235309847]
+custom_minimum_size = Vector2(15, 50)
+layout_mode = 2
+
+[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Player/HBC" unique_id=850942249]
+custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 autowrap_mode = 3
 
@@ -50,8 +82,28 @@ autowrap_mode = 3
 custom_minimum_size = Vector2(400, 100)
 layout_mode = 2
 
-[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Enemy" unique_id=1813174247]
-custom_minimum_size = Vector2(400, 50)
+[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/PC_Enemy" unique_id=604191020]
+layout_mode = 2
+
+[node name="SPL" type="Control" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1538316283]
+custom_minimum_size = Vector2(15, 50)
+layout_mode = 2
+
+[node name="Icon" type="Label" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=409778302]
+clip_contents = true
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 45
+horizontal_alignment = 1
+vertical_alignment = 1
+clip_text = true
+
+[node name="SPR" type="Control" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1844900066]
+custom_minimum_size = Vector2(15, 50)
+layout_mode = 2
+
+[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1813174247]
+custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 autowrap_mode = 3
 
@@ -75,16 +127,19 @@ layout_mode = 2
 
 [node name="Manager" type="Node" parent="." unique_id=38976104]
 
-[node name="DialogueManager" type="Node" parent="Manager" unique_id=1889850160]
+[node name="Dialogue" type="Node" parent="Manager" unique_id=1889850160]
 script = ExtResource("2_feb5d")
 metadata/_custom_type_script = "uid://ivg5beicys7p"
 
-[node name="CombatManager" type="Node" parent="Manager" unique_id=2111170881]
+[node name="Combat" type="Node" parent="Manager" unique_id=2111170881]
 script = ExtResource("3_fc0e3")
 metadata/_custom_type_script = "uid://cfht24jt8567h"
 
-[node name="EmpathyManager" type="Node" parent="Manager" unique_id=1566494767]
+[node name="Empathy" type="Node" parent="Manager" unique_id=1566494767]
 script = ExtResource("4_fc0e3")
 
-[node name="ItemManager" type="Node" parent="Manager" unique_id=1541526958]
+[node name="Item" type="Node" parent="Manager" unique_id=1541526958]
 script = ExtResource("5_7jktm")
+
+[node name="Special" type="Node" parent="Manager" unique_id=1536375209]
+script = ExtResource("6_ryrav")
