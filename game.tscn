@@ -3,7 +3,8 @@
 [ext_resource type="Script" uid="uid://d1qiyot78sli2" path="res://game.gd" id="1_80nbo"]
 [ext_resource type="Script" uid="uid://ivg5beicys7p" path="res://dialogue_manager.gd" id="2_feb5d"]
 [ext_resource type="Script" uid="uid://cfht24jt8567h" path="res://combat_manager.gd" id="3_fc0e3"]
-[ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://empaty_manager.gd" id="4_fc0e3"]
+[ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://empathy_manager.gd" id="4_fc0e3"]
+[ext_resource type="Script" uid="uid://bgde6rbxnopxg" path="res://item_manager.gd" id="5_7jktm"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
 
@@ -71,3 +72,6 @@ metadata/_custom_type_script = "uid://cfht24jt8567h"
 
 [node name="EmpatyManager" type="Node" parent="Manager" unique_id=1566494767]
 script = ExtResource("4_fc0e3")
+
+[node name="ItemManager" type="Node" parent="Manager" unique_id=1541526958]
+script = ExtResource("5_7jktm")

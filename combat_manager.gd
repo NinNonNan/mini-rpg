@@ -64,15 +64,13 @@ func show_combat_buttons():
 		game.b3.pressed.connect(analyze_turn, CONNECT_ONE_SHOT)
 	else:
 		# Se conosciamo il nemico, vediamo se possiamo usare un oggetto curativo
-		for item_id in game.inventory:
-			if game.item_data.has(item_id) and game.item_data[item_id].has("heal"):
-				var item_name_key = game.item_data.get(item_id, {}).get("name", item_id)
-				var translated_item_name = game.tr(item_name_key)
-				game.b3.text = game.tr("combat_choice_use_item") % translated_item_name
-				game.b3.show()
-				game._clear_signals(game.b3)
-				game.b3.pressed.connect(func(): use_item(item_id), CONNECT_ONE_SHOT)
-				break  # Usabile solo il primo oggetto curativo trovato
+		var consumable_id = game.item_manager.get_first_consumable()
+		if consumable_id != "":
+			var item_name_key = game.item_data.get(consumable_id, {}).get("name", consumable_id)
+			game.b3.text = game.tr("combat_choice_use_item") % game.tr(item_name_key)
+			game.b3.show()
+			game._clear_signals(game.b3)
+			game.b3.pressed.connect(func(): use_item_turn(consumable_id), CONNECT_ONE_SHOT)
 
 
 # --- Azioni durante il combattimento ---
@@ -80,7 +78,7 @@ func show_combat_buttons():
 # Analizza il nemico per scoprirne punti deboli
 func analyze_turn():
 	var entity_data = game.entity_data.get(current_entity_id, {})
-	var mood = entity_data.get("mood", 0)
+	var mood = entity_data.get("mood", -1) # Default a -1 (ostile) per coerenza con game.gd
 	
 	game.empathy_manager.analyze(mood)  # Aggiorna lo stato del nemico
 
@@ -94,19 +92,10 @@ func analyze_turn():
 	entity_turn()  # Il nemico reagisce dopo l'analisi
 
 
-# Usa un oggetto dall'inventario
-func use_item(item_id):
-	var item_props = game.item_data[item_id]
-	var heal_amount = item_props.get("heal", 0)
-	var item_name_key = game.item_data.get(item_id, {}).get("name", item_id)
-	var translated_item_name = game.tr(item_name_key)
-
-	game.health = min(game.health + heal_amount, 10)  # Non superare 10 HP
-	game.text.text = game.tr("combat_item_used") % [translated_item_name, heal_amount]
-
-	# Se l'oggetto è consumabile, rimuovilo dall'inventario
-	if item_props.get("consumable", false):
-		game.inventory.erase(item_id)
+# Usa un oggetto dall'inventario (Turno giocatore)
+func use_item_turn(item_id):
+	# Delega la logica all'ItemManager, che restituisce il testo del risultato
+	game.text.text = game.item_manager.use_item(item_id)
 
 	game.update_stats()
 	await get_tree().create_timer(1.5).timeout
@@ -115,13 +104,11 @@ func use_item(item_id):
 
 # Attacco del giocatore
 func attack_entity():
-	var damage_die = 2  # Danno base
-	for item_id in game.inventory:
-		if game.item_data.has(item_id):
-			var item_stats = game.item_data[item_id]
-			damage_die = max(damage_die, item_stats.get("damage", 0))  # Usa l'arma più potente
-
-	var damage = randi_range(1, damage_die)  # Dado: 1..damage_die
+	# Chiedi all'ItemManager di calcolare il danno basato sull'equipaggiamento
+	var damage_result = game.item_manager.get_player_damage()
+	var damage = damage_result[0]
+	var damage_die = damage_result[1]
+	
 	current_entity_health -= damage
 
 	game.text.text = game.tr("combat_player_attack") % [damage_die, damage]

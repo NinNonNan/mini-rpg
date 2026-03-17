@@ -11,6 +11,7 @@ extends Control
 @onready var combat_manager = $Manager/CombatManager as CombatManager
 @onready var dialogue_manager = $Manager/DialogueManager as DialogueManager
 @onready var empathy_manager = $Manager/EmpathyManager as EmpathyManager
+@onready var item_manager = $Manager/ItemManager as ItemManager
 
 # --- Variabili di Gioco ---
 # Salute del giocatore
@@ -58,6 +59,8 @@ func _ready():
 	# Passa il riferimento al nodo Game ai manager
 	if combat_manager:
 		combat_manager.game = self
+	if item_manager:
+		item_manager.game = self
 	# (Potresti voler fare lo stesso per dialogue_manager e empathy_manager se hanno bisogno di un riferimento a Game)
 	
 	# Collega i segnali del DialogueManager
@@ -114,8 +117,7 @@ func _load_translations(lang_code: String = "it"):
 func update_stats():
 	var inventory_names = []
 	for item_id in inventory:
-		var item_name_key = item_data.get(item_id, {}).get("name", item_id)
-		inventory_names.append(tr(item_name_key))
+		inventory_names.append(item_manager.get_item_name(item_id))
 	var inventory_string = tr("inventory_empty")
 	if not inventory_names.is_empty():
 		inventory_string = ", ".join(inventory_names)
@@ -170,8 +172,7 @@ func handle_choice(choice):
 				var item = choice.get("item_id", "oggetto")
 				if not item in inventory:
 					inventory.append(item)
-					var item_name_key = item_data.get(item, {}).get("name", item)
-					var item_name = tr(item_name_key)
+					var item_name = item_manager.get_item_name(item)
 					text.text = tr("pickup_success") % item_name
 					update_stats()
 					await get_tree().create_timer(1.0).timeout
