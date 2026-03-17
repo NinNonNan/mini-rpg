@@ -1,6 +1,9 @@
 [gd_scene format=3 uid="uid://dde07eotaqjpb"]
 
 [ext_resource type="Script" uid="uid://d1qiyot78sli2" path="res://game.gd" id="1_80nbo"]
+[ext_resource type="Script" uid="uid://ivg5beicys7p" path="res://dialogue_manager.gd" id="2_feb5d"]
+[ext_resource type="Script" uid="uid://cfht24jt8567h" path="res://combat_manager.gd" id="3_fc0e3"]
+[ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://empaty_manager.gd" id="4_fc0e3"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
 
@@ -14,28 +17,57 @@ offset_bottom = 40.0
 theme = SubResource("Theme_80nbo")
 script = ExtResource("1_80nbo")
 
-[node name="CenterContainer" type="CenterContainer" parent="." unique_id=1423096150]
+[node name="UI" type="CenterContainer" parent="." unique_id=1423096150]
 custom_minimum_size = Vector2(1280, 720)
 layout_mode = 0
-offset_right = 500.0
-offset_bottom = 400.0
+offset_right = 1280.0
+offset_bottom = 720.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer" unique_id=574882]
+[node name="VBC_Main" type="VBoxContainer" parent="UI" unique_id=574882]
 layout_mode = 2
 alignment = 1
 
-[node name="StoryText" type="Label" parent="CenterContainer/VBoxContainer" unique_id=173698416]
+[node name="PC_Text" type="PanelContainer" parent="UI/VBC_Main" unique_id=2114323482]
+custom_minimum_size = Vector2(400, 50)
 layout_mode = 2
 
-[node name="StatsText" type="Label" parent="CenterContainer/VBoxContainer" unique_id=850942249]
+[node name="StoryText" type="Label" parent="UI/VBC_Main/PC_Text" unique_id=173698416]
+custom_minimum_size = Vector2(400, 50)
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="PC_Stats" type="PanelContainer" parent="UI/VBC_Main" unique_id=107564743]
+custom_minimum_size = Vector2(400, 50)
 layout_mode = 2
 
-[node name="Choice1" type="Button" parent="CenterContainer/VBoxContainer" unique_id=1870710925]
+[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Stats" unique_id=850942249]
+custom_minimum_size = Vector2(400, 50)
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="VBC_Button" type="VBoxContainer" parent="UI/VBC_Main" unique_id=1513875570]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+
+[node name="Choice1" type="Button" parent="UI/VBC_Main/VBC_Button" unique_id=1870710925]
 layout_mode = 2
 theme = SubResource("Theme_feb5d")
 
-[node name="Choice2" type="Button" parent="CenterContainer/VBoxContainer" unique_id=887108862]
+[node name="Choice2" type="Button" parent="UI/VBC_Main/VBC_Button" unique_id=887108862]
 layout_mode = 2
 
-[node name="Choice3" type="Button" parent="CenterContainer/VBoxContainer" unique_id=770643306]
+[node name="Choice3" type="Button" parent="UI/VBC_Main/VBC_Button" unique_id=770643306]
 layout_mode = 2
+
+[node name="Manager" type="Node" parent="." unique_id=38976104]
+
+[node name="DialogueManager" type="Node" parent="Manager" unique_id=1889850160]
+script = ExtResource("2_feb5d")
+metadata/_custom_type_script = "uid://ivg5beicys7p"
+
+[node name="CombatManager" type="Node" parent="Manager" unique_id=2111170881]
+script = ExtResource("3_fc0e3")
+metadata/_custom_type_script = "uid://cfht24jt8567h"
+
+[node name="EmpatyManager" type="Node" parent="Manager" unique_id=1566494767]
+script = ExtResource("4_fc0e3")
