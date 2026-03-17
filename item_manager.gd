@@ -42,6 +42,16 @@ func get_item_name(item_id: String) -> String:
 
 
 # ---------------------------------------------------------
+# ICONA OGGETTO
+# ---------------------------------------------------------
+
+func get_item_icon(item_id: String) -> String:
+	if game.item_data.has(item_id):
+		return game.item_data[item_id].get("icon", "")
+	return ""
+
+
+# ---------------------------------------------------------
 # RICERCA CONSUMABILI
 # ---------------------------------------------------------
 
@@ -82,23 +92,37 @@ func get_first_consumable() -> String:
 # pugni -> d2
 #
 # Restituisce:
-# [danno_generato, dado_massimo]
+# [danno_totale, dado_massimo, bonus_qualità, tipo_danno]
 func get_player_damage() -> Array:
 	
 	var damage_die = 2 # danno base (pugni)
+	var damage_quality = 0 # bonus fisso base
+	var damage_type = "" # tipo di danno (es. "taglio"), vuoto per default
 	
 	for item_id in game.inventory:
 		if game.item_data.has(item_id):
 			
 			var item_stats = game.item_data[item_id]
+			var item_die = int(item_stats.get("damage", 0))
+			var item_qual = int(item_stats.get("quality", 0))
+			var item_type = item_stats.get("type", "")
 			
-			# Mantiene il valore di danno più alto trovato
-			damage_die = max(damage_die, item_stats.get("damage", 0))
+			# Logica per scegliere l'arma migliore:
+			# Privilegiamo il dado più alto. A parità di dado, chi ha più qualità.
+			if item_die > damage_die:
+				damage_die = item_die
+				damage_quality = item_qual
+				damage_type = item_type
+			elif item_die == damage_die:
+				if item_qual > damage_quality:
+					damage_quality = item_qual
+					damage_type = item_type
 	
 	# Genera il danno casuale
-	var damage = randi_range(1, damage_die)
+	var damage_roll = randi_range(1, damage_die)
+	var total_damage = damage_roll + damage_quality
 	
-	return [damage, damage_die]
+	return [total_damage, damage_die, damage_quality, damage_type]
 
 
 # ---------------------------------------------------------
@@ -129,11 +153,13 @@ func use_item(item_id: String) -> String:
 	
 	if item_props.has("heal"):
 		
-		var heal_amount = item_props.get("heal", 0)
+		var heal_amount = int(item_props.get("heal", 0))
+		var quality_bonus = int(item_props.get("quality", 0))
+		var total_heal = heal_amount + quality_bonus
 		
 		# Cura il giocatore senza superare il limite
 		# (in Game la salute iniziale è 10)
-		game.health = min(game.health + heal_amount, 10)
+		game.health = min(game.health + total_heal, 10)
 		
 		
 		# Se l'oggetto è consumabile lo rimuoviamo
@@ -142,7 +168,7 @@ func use_item(item_id: String) -> String:
 		
 		
 		# Messaggio di feedback al giocatore
-		return game.tr("combat_item_used") % [translated_name, heal_amount]
+		return game.tr("combat_item_used") % [translated_name, total_heal]
 	
 	
 	# Oggetto senza effetti definiti

@@ -1,69 +1,198 @@
 {
+	"damage_types": {
+		"taglio": {
+			"name": "Taglio",
+			"icon": "🗡️"
+		},
+		"fuoco": {
+			"name": "Fuoco",
+			"icon": "🔥"
+		},
+		"morso": {
+			"name": "Morso",
+			"icon": "🦷"
+		},
+		"sole":{
+			"name": "Sole",
+			"icon": "☀️"
+		}
+	},
 	"items": {
 		"spada": {
-			"damage": 4
+			"name": "item_sword",
+			"icon": "🗡️",
+			"damage": 4.0,
+			"quality": 1.0,
+			"type": "taglio"
+		},
+		"ascia": {
+			"name": "item_axe",
+			"icon": "🪓",
+			"damage": 6.0,
+			"quality": 0.0,
+			"type": "taglio"
+		},
+		"torcia": {
+			"name": "item_torch",
+			"icon": "🔥",
+			"damage": 0.0,
+			"quality": 3.0,
+			"type": "fuoco"
 		},
 		"pozione": {
-			"heal": 5,
+			"name": "item_potion",
+			"icon": "🍻",
+			"heal": 5.0,
+			"quality": 2.0,
 			"consumable": true
 		}
 	},
 	"entities": {
 		"wolf": {
 			"name": "Lupo",
-			"health": 5,
-			"damage": 2,
-			"mood": -1,
+			"health": 5.0,
+			"damage": 2.0,
+			"weaknesses": ["fuoco"],
+			"mood": -1.0,
 			"pronoun": "il"
 		},
 		"dragon": {
 			"name": "Drago",
-			"health": 8,
-			"damage": 4,
-			"mood": -1,
+			"health": 8.0,
+			"damage": [
+				{
+					"amount": 3.0,
+					"type": "graffio"
+				},
+				{
+					"amount": 6.0,
+					"type": "fuoco"
+				}
+			],
+			"immunities": ["fuoco"],
+			"mood": -1.0,
+			"pronoun": "il"
+		},
+		"vampire": {
+			"name": "Vampiro",
+			"health": 10.0,
+			"damage": [
+				{
+					"amount": 2.0,
+					"type": "morso"
+				},
+				{
+					"amount": 4.0,
+					"type": "artiglio"
+				}
+			],
+			"weaknesses": ["fuoco", "taglio", "sole"],
+			"mood": 10.0,
 			"pronoun": "il"
 		}
 	},
 	"scenes": {
 		"start": {
-			"text": "Benvenuto nel Mini-GDR! Sei davanti a una caverna.",
+			"text": "Benvenuto nel Mini-GDR!\nTi trovi davanti a una caverna.",
 			"choices": [
-				{"text": "Entra nella caverna", "next": "cave"},
-				{"text": "Vai nella foresta", "next": "forest"},
-				{"text": "Cerca provviste (Prendi pozione)", "action": "pickup", "item_id": "pozione", "next": "start"}
+				{
+					"text": "Entra nella caverna",
+					"next": "cave"
+				},
+				{
+					"text": "Vai nella foresta",
+					"next": "forest_0"
+				},
+				{
+					"text": "Cerca provviste (Prendi pozione)",
+					"action": "pickup",
+					"item_id": "pozione",
+					"next": "start"
+				}
 			]
 		},
 		"cave": {
 			"text": "Dentro la caverna trovi una spada arrugginita.",
 			"choices": [
-				{"text": "Prendere la spada", "action": "pickup", "item_id": "spada", "next": "dragon"},
-				{"text": "Proseguire", "next": "dragon"}
+				{
+					"text": "Prendere la spada",
+					"action": "pickup",
+					"item_id": "spada",
+					"next": "dragon"
+				},
+				{
+					"text": "Proseguire",
+					"next": "dragon"
+				}
 			]
 		},
-		"forest": {
-			"text": "Un lupo selvaggio appare!",
+		"forest_0": {
+			"text": "Ti incammini nella foresta, trovi una piccola radura, ai piedi di un ceppo una vecchia ascia.",
 			"choices": [
-				{"text": "Combattere", "action": "combat", "entity_id": "wolf", "victory_scene": "forest_victory"},
-				{"text": "Scappare", "next": "start"}
+				{
+					"text": "Prendere l'ascia",
+					"action": "pickup",
+					"item_id": "ascia",
+					"next": "forest_0"
+				},
+				{
+					"text": "Proseguire",
+					"next": "forest_1"
+				}
+			]
+		},
+		"forest_1": {
+			"text": "Avanzi nel fitto della foresta quando un lupo selvaggio appare!",
+			"choices": [
+				{
+					"text": "Combattere",
+					"action": "combat",
+					"entity_id": "wolf",
+					"victory_scene": "forest_victory"
+				},
+				{
+					"text": "Scappare",
+					"next": "start"
+				}
 			]
 		},
 		"dragon": {
 			"text": "Un piccolo drago protegge un tesoro.",
 			"choices": [
-				{"text": "Combattere", "action": "combat", "entity_id": "dragon", "victory_scene": "dragon_victory"},
-				{"text": "Scappare", "next": "start"}
+				{
+					"text": "Combattere",
+					"action": "combat",
+					"entity_id": "dragon",
+					"victory_scene": "dragon_victory"
+				},
+				{
+					"text": "Scappare",
+					"next": "start"
+				},
+				{
+					"text": "Esamina",
+					"action": "analyze",
+					"entity_id": "dragon",
+					"next": "dragon"
+				}
 			]
 		},
 		"forest_victory": {
 			"text": "Hai sconfitto il lupo. La via è libera, ma non c'è altro da vedere qui. Meglio tornare indietro.",
 			"choices": [
-				{"text": "Torna all'inizio", "next": "start"}
+				{
+					"text": "Torna all'inizio",
+					"next": "start"
+				}
 			]
 		},
 		"dragon_victory": {
-			"text": "Hai sconfitto il drago e hai preso il suo tesoro! HAI VINTO!",
+			"text": "Hai sconfitto il drago e hai preso il suo tesoro!\nHAI VINTO!",
 			"choices": [
-				{"text": "Gioca di nuovo", "action": "restart"}
+				{
+					"text": "Gioca di nuovo",
+					"action": "restart"
+				}
 			]
 		}
 	}

@@ -37,14 +37,27 @@ custom_minimum_size = Vector2(400, 50)
 layout_mode = 2
 autowrap_mode = 2
 
-[node name="PC_Stats" type="PanelContainer" parent="UI/VBC_Main" unique_id=107564743]
-custom_minimum_size = Vector2(400, 50)
+[node name="PC_Player" type="PanelContainer" parent="UI/VBC_Main" unique_id=107564743]
+custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 
-[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Stats" unique_id=850942249]
+[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Player" unique_id=850942249]
 custom_minimum_size = Vector2(400, 50)
 layout_mode = 2
 autowrap_mode = 3
+
+[node name="PC_Enemy" type="PanelContainer" parent="UI/VBC_Main" unique_id=1906583390]
+custom_minimum_size = Vector2(400, 100)
+layout_mode = 2
+
+[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Enemy" unique_id=1813174247]
+custom_minimum_size = Vector2(400, 50)
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Spacer" type="Control" parent="UI/VBC_Main" unique_id=470077312]
+custom_minimum_size = Vector2(400, 25)
+layout_mode = 2
 
 [node name="VBC_Button" type="VBoxContainer" parent="UI/VBC_Main" unique_id=1513875570]
 custom_minimum_size = Vector2(0, 150)
@@ -70,7 +83,7 @@ metadata/_custom_type_script = "uid://ivg5beicys7p"
 script = ExtResource("3_fc0e3")
 metadata/_custom_type_script = "uid://cfht24jt8567h"
 
-[node name="EmpatyManager" type="Node" parent="Manager" unique_id=1566494767]
+[node name="EmpathyManager" type="Node" parent="Manager" unique_id=1566494767]
 script = ExtResource("4_fc0e3")
 
 [node name="ItemManager" type="Node" parent="Manager" unique_id=1541526958]
