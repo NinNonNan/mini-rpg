@@ -67,11 +67,18 @@
 	"combat_enemy_attack_type": "Il nemico usa %s (d%d) e ti colpisce per %d danni!",
 	"combat_damage_weakness": "\nÈ super efficace! (Danni raddoppiati)",
 	"combat_damage_immunity": "\nNon ha effetto! Il nemico è immune al %s.",
+	"combat_damage_affinity": "\nAffinità! Il bersaglio assorbe %s e si cura.",
 	"combat_choice_special": "Abilità",
 	"combat_back": "Indietro",
+	"combat_select_target": "Seleziona il bersaglio...",
 	"spell_fireball": "Palla di Fuoco",
 	"spell_heal": "Cura",
 	"spell_cost_low": "Non hai abbastanza Mana! (Richiede %d MP)",
 	"spell_cast_damage": "Lanci %s e infliggi %d danni!",
-	"spell_cast_heal": "Lanci %s e recuperi %d HP!"
+	"spell_cast_heal": "Lanci %s e recuperi %d HP!",
+	"growth_energy_gained": "Hai assorbito %d Energia!",
+	"growth_menu_title": "Distribuisci Energia\nEnergia disponibile: %d",
+	"growth_btn_life": "Potenzia Vita (Attuale: %d)",
+	"growth_btn_magic": "Potenzia Magia (Attuale: %d)",
+	"growth_btn_continue": "Prosegui"
 }

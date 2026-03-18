@@ -51,20 +51,29 @@ func use_spell(spell_id: String, target_entity_id: String) -> String:
 		
 		# Calcolo resistenze tramite dati globali
 		var entity_def = {}
-		# Fix: Accesso sicuro a entity_data (o fallback su story.entities)
-		var e_data = game.get("entity_data")
-		if not e_data and game.get("story"):
-			e_data = game.get("story").get("entities")
-			
-		if e_data:
-			entity_def = e_data.get(target_entity_id, {})
+		
+		if target_entity_id == "player":
+			entity_def = game.story_data.get("player", {})
+		else:
+			# Fix: Accesso sicuro a entity_data (o fallback su story.entities)
+			var e_data = game.get("entity_data")
+			if not e_data and game.get("story"):
+				e_data = game.get("story").get("entities")
+				
+			if e_data:
+				entity_def = e_data.get(target_entity_id, {})
 			
 		var weaknesses = entity_def.get("weaknesses", [])
 		var immunities = entity_def.get("immunities", [])
+		var affinities = entity_def.get("affinity", [])
 		
 		var multiplier_msg = ""
 		
-		if type in immunities:
+		# Controlla prima l'affinità, che inverte il danno in cura
+		if type in affinities:
+			amount *= -1 # Inverte il danno in cura
+			multiplier_msg = game.tr("combat_damage_affinity") % type
+		elif type in immunities:
 			amount = 0
 			multiplier_msg = game.tr("combat_damage_immunity") % type
 		elif type in weaknesses:
@@ -73,10 +82,19 @@ func use_spell(spell_id: String, target_entity_id: String) -> String:
 			
 		# Applica danno al manager di combattimento
 		# CRITICITÀ RISOLTA: Comunica al CombatManager di modificare l'energia del nemico
-		if game.combat_manager:
+		if target_entity_id == "player":
+			# amount positivo = danno, negativo = cura (affinità)
+			game.modify_player_energy("life", -amount)
+		elif game.combat_manager:
 			game.combat_manager.modify_current_entity_energy("life", -amount)
 			
-		var text = game.tr("spell_cast_damage") % [game.tr(spell.name), amount]
+		var text = ""
+		# Se stiamo curando il giocatore tramite affinità, usiamo il messaggio di cura per chiarezza
+		if target_entity_id == "player" and amount < 0:
+			text = game.tr("spell_cast_heal") % [game.tr(spell.name), abs(amount)]
+		else:
+			text = game.tr("spell_cast_damage") % [game.tr(spell.name), abs(amount)]
+			
 		return text + multiplier_msg
 		
 	return ""

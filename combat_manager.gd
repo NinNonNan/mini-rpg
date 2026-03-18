@@ -47,6 +47,9 @@ var current_entity_damage_data = null
 # Scena da caricare dopo la vittoria
 var current_victory_scene = ""
 
+# Variabile temporanea per la magia selezionata in attesa di bersaglio
+var pending_spell_id: String = ""
+
 
 # =========================================================
 # INIZIO COMBATTIMENTO
@@ -63,7 +66,15 @@ func start_combat(entity_id: String, victory_scene: String):
 	var entity_def = game.entity_data.get(entity_id, {})
 
 	# Se il JSON non definisce i valori usiamo default
-	current_entity_health = int(entity_def.get("health", 5))
+	current_entity_health = 5 # Valore di default
+	if entity_def.has("energy"):
+		for stat in entity_def["energy"]:
+			if stat.get("type") == "life":
+				current_entity_health = int(stat.get("value", 5))
+				break
+	elif entity_def.has("health"): # Fallback per vecchia struttura
+		current_entity_health = int(entity_def.get("health", 5))
+
 	current_entity_damage_data = entity_def.get("damage", 2)
 
 	# Aggiorna la UI delle statistiche
@@ -138,7 +149,7 @@ func open_special_menu():
 		var icon1 = game.get_damage_type_icon(spell1.get("type", ""))
 		game.b1.text = "%s %s (%d MP)" % [icon1, game.tr(spell1.name), spell1.cost]
 		game._clear_signals(game.b1)
-		game.b1.pressed.connect(func(): cast_spell_turn("fireball"))
+		game.b1.pressed.connect(func(): prepare_spell_cast("fireball"))
 		game.b1.show()
 	else:
 		game.b1.hide()
@@ -149,7 +160,7 @@ func open_special_menu():
 		var icon2 = game.get_damage_type_icon(spell2.get("type", ""))
 		game.b2.text = "%s %s (%d MP)" % [icon2, game.tr(spell2.name), spell2.cost]
 		game._clear_signals(game.b2)
-		game.b2.pressed.connect(func(): cast_spell_turn("heal"))
+		game.b2.pressed.connect(func(): prepare_spell_cast("heal"))
 		game.b2.show()
 	else:
 		game.b2.hide()
@@ -160,32 +171,67 @@ func open_special_menu():
 	game._clear_signals(game.b3)
 	game.b3.pressed.connect(show_combat_buttons)
 
-func cast_spell_turn(spell_id: String):
-	
+# Fase 1: Preparazione e Selezione Bersaglio
+func prepare_spell_cast(spell_id: String):
+	# Controllo Mana preventivo
 	if not game.special_manager.has_enough_mana(spell_id):
 		var cost = game.special_manager.spells[spell_id].cost
 		game.text.text = game.tr("spell_cost_low") % cost
-		# Piccolo delay per leggere l'errore, poi ricarica menu
 		await get_tree().create_timer(1.0).timeout
 		open_special_menu()
 		return
+
+	pending_spell_id = spell_id
+	
+	# Cambia UI per chiedere il bersaglio
+	game.text.text = game.tr("combat_select_target")
+	
+	# Nasconde i pulsanti delle magie
+	game.b1.hide()
+	game.b2.hide()
+	
+	# Pulsante Indietro diventa Annulla
+	game.b3.text = game.tr("combat_back")
+	game.b3.show()
+	game._clear_signals(game.b3)
+	game.b3.pressed.connect(cancel_spell_selection)
+	
+	# Attiva le icone cliccabili
+	game.enable_target_selection()
+	game.target_clicked.connect(_on_target_chosen, CONNECT_ONE_SHOT)
+
+func cancel_spell_selection():
+	game.disable_target_selection()
+	# Disconnette il segnale se era attivo (per evitare doppie chiamate future)
+	if game.target_clicked.is_connected(_on_target_chosen):
+		game.target_clicked.disconnect(_on_target_chosen)
+	open_special_menu()
+
+# Fase 2: Bersaglio Selezionato ed Esecuzione
+func _on_target_chosen(target_type: String):
+	game.disable_target_selection()
+	
+	# Determina l'ID del bersaglio
+	var target_id = ""
+	if target_type == "player":
+		target_id = "player"
+	elif target_type == "enemy":
+		target_id = current_entity_id
+	
+	if target_id != "":
+		await execute_spell(pending_spell_id, target_id)
+
+func execute_spell(spell_id: String, target_id: String):
 		
 	# Esegue la magia
-	game.text.text = game.special_manager.use_spell(spell_id, current_entity_id)
+	game.text.text = game.special_manager.use_spell(spell_id, target_id)
 	game.update_stats()
 	
 	await get_tree().create_timer(1.5).timeout
 	
-	# Controllo vittoria immediato se era danno
-	if current_entity_health <= 0:
-		current_entity_health = 0
-		game.text.text = game.tr("combat_victory")
-		await get_tree().create_timer(1.5).timeout
-		game.show_scene(current_victory_scene)
-		return
-		
-	# Turno nemico
-	entity_turn()
+	# Controllo vittoria immediato o Turno nemico
+	if not await _check_victory():
+		entity_turn()
 	
 
 # -- Vecchie funzioni rimosse o sostituite dalla nuova UI --
@@ -266,17 +312,22 @@ func attack_entity():
 	var entity_def = game.entity_data.get(current_entity_id, {})
 	var weaknesses = entity_def.get("weaknesses", [])
 	var immunities = entity_def.get("immunities", [])
+	var affinities = entity_def.get("affinity", [])
 	
 	var multiplier_msg = ""
 
 	# Controllo Debolezze e Immunità
 	if damage_type != "":
-		# Controlla immunità (ora array di stringhe)
-		if damage_type in immunities:
+		# Controlla prima l'affinità, che inverte il danno in cura
+		if damage_type in affinities:
+			total_damage *= -1 # Inverte il danno in cura
+			multiplier_msg = game.tr("combat_damage_affinity") % damage_type
+		# Poi controlla immunità
+		elif damage_type in immunities:
 			total_damage = 0
 			multiplier_msg = game.tr("combat_damage_immunity") % damage_type
 		
-		# Controlla debolezze (se non è già immune e non è stato azzerato)
+		# Infine controlla debolezze
 		elif damage_type in weaknesses:
 			total_damage *= 2
 			multiplier_msg = game.tr("combat_damage_weakness")
@@ -307,18 +358,7 @@ func attack_entity():
 	# CONTROLLO VITTORIA
 	# -----------------------------------------------------
 
-	if current_entity_health <= 0:
-
-		current_entity_health = 0
-
-		game.text.text = game.tr("combat_victory")
-
-		game.update_stats()
-
-		await get_tree().create_timer(1.5).timeout
-
-		game.show_scene(current_victory_scene)
-
+	if await _check_victory():
 		return
 
 
@@ -402,3 +442,25 @@ func entity_turn():
 
 		# Torna il turno del giocatore
 		show_combat_buttons()
+
+# Funzione centralizzata per gestire la vittoria e le ricompense
+func _check_victory() -> bool:
+	if current_entity_health <= 0:
+		current_entity_health = 0
+		game.text.text = game.tr("combat_victory")
+		
+		# Calcolo Ricompense Energia
+		if game.growth_manager:
+			var reward = game.growth_manager.calculate_reward(current_entity_id)
+			if reward > 0:
+				game.growth_manager.add_energy(reward)
+				game.text.text += "\n" + game.tr("growth_energy_gained") % reward
+		
+		game.update_stats()
+		await get_tree().create_timer(2.0).timeout
+		
+		# Invece di andare alla scena, apriamo il menu di crescita
+		game.start_growth_menu(current_victory_scene)
+		return true
+		
+	return false

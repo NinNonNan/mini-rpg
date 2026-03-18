@@ -6,8 +6,21 @@
 [ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://empathy_manager.gd" id="4_fc0e3"]
 [ext_resource type="Script" uid="uid://bgde6rbxnopxg" path="res://item_manager.gd" id="5_7jktm"]
 [ext_resource type="Script" uid="uid://c0f4lcycq4hn1" path="res://special_manager.gd" id="6_ryrav"]
+[ext_resource type="Script" uid="uid://686s31eqltii" path="res://growth_manager.gd" id="7_eow3j"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ryrav"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_eow3j"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_j5wjh"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_vef74"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_hve3p"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_mfdv2"]
 
 [sub_resource type="Theme" id="Theme_feb5d"]
 
@@ -60,13 +73,14 @@ layout_mode = 2
 custom_minimum_size = Vector2(15, 50)
 layout_mode = 2
 
-[node name="Icon" type="Label" parent="UI/VBC_Main/PC_Player/HBC" unique_id=273744548]
+[node name="Icon" type="Button" parent="UI/VBC_Main/PC_Player/HBC" unique_id=778530743]
 clip_contents = true
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
-theme_override_font_sizes/font_size = 45
-horizontal_alignment = 1
-vertical_alignment = 1
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = SubResource("StyleBoxEmpty_ryrav")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_eow3j")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_j5wjh")
 clip_text = true
 
 [node name="SPR" type="Control" parent="UI/VBC_Main/PC_Player/HBC" unique_id=235309847]
@@ -79,7 +93,7 @@ layout_mode = 2
 autowrap_mode = 3
 
 [node name="PC_Enemy" type="PanelContainer" parent="UI/VBC_Main" unique_id=1906583390]
-custom_minimum_size = Vector2(400, 100)
+custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 
 [node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/PC_Enemy" unique_id=604191020]
@@ -89,13 +103,14 @@ layout_mode = 2
 custom_minimum_size = Vector2(15, 50)
 layout_mode = 2
 
-[node name="Icon" type="Label" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=409778302]
+[node name="Icon" type="Button" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1413007516]
 clip_contents = true
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
-theme_override_font_sizes/font_size = 45
-horizontal_alignment = 1
-vertical_alignment = 1
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = SubResource("StyleBoxEmpty_vef74")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_hve3p")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_mfdv2")
 clip_text = true
 
 [node name="SPR" type="Control" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1844900066]
@@ -143,3 +158,6 @@ script = ExtResource("5_7jktm")
 
 [node name="Special" type="Node" parent="Manager" unique_id=1536375209]
 script = ExtResource("6_ryrav")
+
+[node name="Growth" type="Node" parent="Manager" unique_id=312432868]
+script = ExtResource("7_eow3j")
