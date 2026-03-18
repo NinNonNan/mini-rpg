@@ -1,6 +1,6 @@
 {
 	"player": {
-		"icon": "🧙",
+		"icon": "res://art/player.svg",
 		"energy": [
 			{"type": "life","value": 10},
 			{"type": "magic","value": 10},
@@ -22,6 +22,24 @@
 		"graffio": {"name": "Graffio","icon": "🐾"},
 		"artiglio": {"name": "Artiglio","icon": "🐾"}
 	},
+	"weather": {
+		"sun": {
+			"name": "weather_sun",
+			"icon": "☀️"
+		},
+		"rain": {
+			"name": "weather_rain",
+			"icon": "🌧️"
+		},
+		"fog": {
+			"name": "weather_fog",
+			"icon": "🌫️"
+		},
+		"storm": {
+			"name": "weather_storm",
+			"icon": "⛈️"
+		}
+	},
 	"spells": {
 		"fireball": {
 			"name": "spell_fireball",
@@ -33,8 +51,7 @@
 			"name": "spell_heal",
 			"type": "sacro",
 			"cost": 4,
-			"damage": 5,
-			"target": "self"
+			"damage": 5
 		}
 	},
 	"items": {
@@ -70,35 +87,39 @@
 	"entities": {
 		"wolf": {
 			"name": "Lupo",
+			"pronoun": "il",
+			"icon": "res://art/wolf.svg",
 			"energy": [
 				{"type": "life","value": 5.0},
-				{"type": "mood","value": -1.0}
+				{"type": "mood","value": 3.0}
 			],
 			"damage": [
 				{"amount": 2.0,"type": "morso"},
 				{"amount": 1.0,"type": "graffio"}
 			],
-			"weaknesses": ["fuoco"],
-			"pronoun": "il",
-			"affinity": ["sacro"]
+			"affinity": ["sacro"],
+			"weaknesses": []
 		},
 		"dragon": {
 			"name": "Drago",
+			"pronoun": "il",
+			"icon": "res://art/dragon.svg",
 			"energy": [
 				{"type": "life","value": 8.0},
-				{"type": "mood","value": -1.0}
+				{"type": "mood","value": 2.0}
 			],
 			"damage": [
 				{"amount": 3.0,"type": "graffio"},
 				{"amount": 6.0,"type": "fuoco"}
 			],
+			"affinity": ["sacro"],
 			"immunities": ["fuoco"],
-			"pronoun": "il",
-			"icon": "🐉",
-			"affinity": ["sacro"]
+			"weaknesses": ["freddo"]
 		},
 		"vampire": {
 			"name": "Vampiro",
+			"pronoun": "il",
+			"icon": "res://art/vampire.svg",
 			"energy": [
 				{"type": "life","value": 10.0},
 				{"type": "mood","value": 10.0}
@@ -107,9 +128,8 @@
 				{"amount": 2.0,"type": "morso"},
 				{"amount": 4.0,"type": "artiglio"}
 			],
-			"weaknesses": ["fuoco", "taglio", "sole"],
-			"pronoun": "il",
-			"affinity": []
+			"affinity": [],
+			"weaknesses": ["fuoco", "taglio", "sole"]
 		}
 	},
 	"scenes": {
@@ -118,7 +138,7 @@
 			"choices": [
 				{
 					"text": "Entra nella caverna",
-					"next": "cave"
+					"next": "cave_0"
 				},
 				{
 					"text": "Vai nella foresta",
@@ -132,18 +152,60 @@
 				}
 			]
 		},
-		"cave": {
-			"text": "Dentro la caverna trovi una spada arrugginita.",
+		"cave_0": {
+			"text": "Dentro la caverna trovi una spada arrugginita",
 			"choices": [
 				{
-					"text": "Prendere la spada",
+					"text": "Prendi la spada",
 					"action": "pickup",
 					"item_id": "spada",
-					"next": "dragon"
+					"next": "cave_1"
 				},
 				{
 					"text": "Proseguire",
-					"next": "dragon"
+					"next": "cave_1"
+				}
+			]
+		},
+		"cave_1": {
+			"text": "Un piccolo drago protegge un tesoro",
+			"choices": [
+				{
+					"text": "Combatti",
+					"action": "combat",
+					"entity_id": "dragon",
+					"victory_scene": "dragon_victory"
+				},
+				{
+					"text": "Scappa",
+					"next": "start"
+				},
+				{
+					"text": "Esamina",
+					"action": "analyze",
+					"entity_id": "dragon",
+					"next": "cave_1"
+				}
+			]
+		},
+		"cave_2": {
+			"text": "Il vampiro ti attacca con ferocia!",
+			"choices": [
+				{
+					"text": "Combatti",
+					"action": "combat",
+					"entity_id": "vampire",
+					"victory_scene": "vampire_victory"
+				},
+				{
+					"text": "Scappa",
+					"next": "start"
+				},
+				{
+					"text": "Esamina",
+					"action": "analyze",
+					"entity_id": "vampire",
+					"next": "cave_2"
 				}
 			]
 		},
@@ -151,13 +213,13 @@
 			"text": "Ti incammini nella foresta, trovi una piccola radura, ai piedi di un ceppo una vecchia ascia.",
 			"choices": [
 				{
-					"text": "Prendere l'ascia",
+					"text": "Prendi l'ascia",
 					"action": "pickup",
 					"item_id": "ascia",
 					"next": "forest_0"
 				},
 				{
-					"text": "Proseguire",
+					"text": "Prosegui",
 					"next": "forest_1"
 				}
 			]
@@ -169,7 +231,7 @@
 					"text": "Combatti",
 					"action": "combat",
 					"entity_id": "wolf",
-					"victory_scene": "forest_victory"
+					"victory_scene": "wolf_victory"
 				},
 				{
 					"text": "Scappa.",
@@ -177,28 +239,7 @@
 				}
 			]
 		},
-		"dragon": {
-			"text": "Un piccolo drago protegge un tesoro.",
-			"choices": [
-				{
-					"text": "Combatti",
-					"action": "combat",
-					"entity_id": "dragon",
-					"victory_scene": "dragon_victory"
-				},
-				{
-					"text": "Scappa.",
-					"next": "start"
-				},
-				{
-					"text": "Esamina",
-					"action": "analyze",
-					"entity_id": "dragon",
-					"next": "dragon"
-				}
-			]
-		},
-		"forest_victory": {
+		"wolf_victory": {
 			"text": "Hai sconfitto il lupo. La via è libera, ma non c'è altro da vedere qui. Meglio tornare indietro.",
 			"choices": [
 				{
@@ -211,42 +252,21 @@
 			"text": "Hai sconfitto il drago e hai preso il suo tesoro! Ma qualcuno ti osserva dall'ombra... Un vampiro emerge e ti sfida a duello!",
 			"choices": [
 				{
-					"text": "Accetta la sfida.",
-					"next": "cave2"
+					"text": "Accetta la sfida",
+					"next": "cave_2"
 				},
 				{
-					"text": "Scappa.",
+					"text": "Scappa",
 					"next": "start"
 				}
 			]
 		},
-		"cave2": {
-			"text": "Il vampiro ti attacca con ferocia!",
-			"choices": [
-				{
-					"text": "Combattere",
-					"action": "combat",
-					"entity_id": "vampire",
-					"victory_scene": "cave2_victory"
-				},
-				{
-					"text": "Scappare",
-					"next": "start"
-				},
-				{
-					"text": "Esamina",
-					"action": "analyze",
-					"entity_id": "vampire",
-					"next": "cave2"
-				}
-			]
-		},
-		"cave2_victory": {
+		"vampire_victory": {
 			"text": "Hai sconfitto il vampiro! Il tesoro è tuo, ma la tua avventura è appena iniziata...",
 			"choices": [
 				{
-					"text": "Esplora la caverna.",
-					"next": "cave"
+					"text": "Torna all'inizio",
+					"next": "start"
 				}
 			]
 		}

@@ -66,12 +66,12 @@ func start_combat(entity_id: String, victory_scene: String):
 	var entity_def = game.entity_data.get(entity_id, {})
 
 	# Se il JSON non definisce i valori usiamo default
-	current_entity_health = 5 # Valore di default
+	current_entity_health = 5 # Valore di default se non specificato
 	if entity_def.has("energy"):
-		for stat in entity_def["energy"]:
-			if stat.get("type") == "life":
-				current_entity_health = int(stat.get("value", 5))
-				break
+		# Cerca la statistica "life" nell'array energy in modo funzionale
+		var life_stats = entity_def["energy"].filter(func(stat): return stat.get("type") == "life")
+		if not life_stats.is_empty():
+			current_entity_health = int(life_stats[0].get("value", 5))
 	elif entity_def.has("health"): # Fallback per vecchia struttura
 		current_entity_health = int(entity_def.get("health", 5))
 
@@ -98,6 +98,8 @@ func modify_current_entity_energy(type_id: String, amount: int):
 # Imposta i pulsanti disponibili nel turno del giocatore.
 
 func show_combat_buttons():
+	# Riabilita i pulsanti (nel caso fossero disabilitati da QTE o altro)
+	game.enable_choices()
 
 	# -----------------------------------------------------
 	# PULSANTE 1 : ATTACCO
@@ -106,7 +108,7 @@ func show_combat_buttons():
 	game.b1.show()
 
 	game._clear_signals(game.b1)
-	game.b1.pressed.connect(attack_entity, CONNECT_ONE_SHOT)
+	game.b1.pressed.connect(initiate_attack_qte, CONNECT_ONE_SHOT)
 
 	# -----------------------------------------------------
 	# PULSANTE 2 : ABILITÀ / SPECIAL
@@ -140,36 +142,33 @@ func open_special_menu():
 		return
 
 	var all_spells = game.special_manager.spells
+	var spell_keys = all_spells.keys()
+	var buttons = [game.b1, game.b2] # Array di pulsanti per le magie, facilmente estendibile
 
-	# Configura i pulsanti per mostrare le magie disponibili
-	
-	# Palla di Fuoco (Button 1)
-	if all_spells.has("fireball"):
-		var spell1 = all_spells.get("fireball")
-		var icon1 = game.get_damage_type_icon(spell1.get("type", ""))
-		game.b1.text = "%s %s (%d MP)" % [icon1, game.tr(spell1.name), spell1.cost]
-		game._clear_signals(game.b1)
-		game.b1.pressed.connect(func(): prepare_spell_cast("fireball"))
-		game.b1.show()
-	else:
-		game.b1.hide()
-	
-	# Cura (Button 2)
-	if all_spells.has("heal"):
-		var spell2 = all_spells.get("heal")
-		var icon2 = game.get_damage_type_icon(spell2.get("type", ""))
-		game.b2.text = "%s %s (%d MP)" % [icon2, game.tr(spell2.name), spell2.cost]
-		game._clear_signals(game.b2)
-		game.b2.pressed.connect(func(): prepare_spell_cast("heal"))
-		game.b2.show()
-	else:
-		game.b2.hide()
-	
+	# Popola dinamicamente i pulsanti con le magie disponibili
+	for i in range(buttons.size()):
+		var button = buttons[i]
+		game._clear_signals(button) # Pulisce segnali precedenti
+
+		if i < spell_keys.size():
+			# C'è una magia da assegnare a questo pulsante
+			var spell_id = spell_keys[i]
+			var spell_data = all_spells[spell_id]
+			var icon = game.get_damage_type_icon(spell_data.get("type", ""))
+
+			button.text = "%s %s (%d MP)" % [icon, game.tr(spell_data.name), spell_data.cost]
+			# Usiamo .bind() per passare l'ID della magia in modo sicuro ed evitare problemi di scope
+			button.pressed.connect(prepare_spell_cast.bind(spell_id))
+			button.show()
+		else:
+			# Non ci sono più magie, nascondi i pulsanti rimanenti
+			button.hide()
+
 	# Indietro (Button 3)
 	game.b3.text = game.tr("combat_back")
 	game.b3.show()
 	game._clear_signals(game.b3)
-	game.b3.pressed.connect(show_combat_buttons)
+	game.b3.pressed.connect(show_combat_buttons) # Ritorna al menu di combattimento principale
 
 # Fase 1: Preparazione e Selezione Bersaglio
 func prepare_spell_cast(spell_id: String):
@@ -298,8 +297,14 @@ func use_item_turn(item_id):
 # ATTACCO DEL GIOCATORE
 # =========================================================
 
-func attack_entity():
+func initiate_attack_qte():
+	# Avvia l'evento QTE per l'attacco del giocatore.
+	# Il contesto "player_attack" dirà a Game.gd come gestire il risultato.
+	game.start_qte_event("qte_start_attack", "player_attack")
 
+# Viene chiamata da Game.gd al termine del QTE di attacco.
+func resolve_player_attack(qte_multiplier: float):
+	
 	# Calcolo del danno tramite ItemManager
 	var damage_result = game.item_manager.get_player_damage()
 
@@ -307,6 +312,9 @@ func attack_entity():
 	var damage_die = damage_result[1]
 	var quality = damage_result[2]
 	var damage_type = damage_result[3]
+	
+	# Applica il moltiplicatore del QTE al danno base
+	total_damage = int(total_damage * qte_multiplier)
 
 	# Recuperiamo i dati sulle resistenze del nemico corrente
 	var entity_def = game.entity_data.get(current_entity_id, {})
@@ -335,24 +343,26 @@ func attack_entity():
 	# Applichiamo il danno (che potrebbe essere stato azzerato o raddoppiato)
 	current_entity_health -= total_damage
 
+	# Il testo del risultato del QTE (es. "PERFECT!") è già stato mostrato da Game.gd.
+	# Aggiungiamo una nuova riga con i dettagli del danno.
+	var damage_details_text: String
 	if quality > 0:
 		if damage_type != "":
-			game.text.text = game.tr("combat_player_attack_bonus_type") % [damage_type, damage_die, quality, total_damage]
+			damage_details_text = game.tr("combat_player_attack_bonus_type") % [damage_type, damage_die, quality, total_damage]
 		else:
-			game.text.text = game.tr("combat_player_attack_bonus") % [damage_die, quality, total_damage]
+			damage_details_text = game.tr("combat_player_attack_bonus") % [damage_die, quality, total_damage]
 	else:
 		if damage_type != "":
-			game.text.text = game.tr("combat_player_attack_type") % [damage_type, damage_die, total_damage]
+			damage_details_text = game.tr("combat_player_attack_type") % [damage_type, damage_die, total_damage]
 		else:
-			game.text.text = game.tr("combat_player_attack") % [damage_die, total_damage]
+			damage_details_text = game.tr("combat_player_attack") % [damage_die, total_damage]
+	
+	game.text.text += "\n" + damage_details_text
 
 	# Aggiungiamo il messaggio di feedback sull'efficacia
 	game.text.text += multiplier_msg
 
 	game.update_stats()
-
-	await get_tree().create_timer(1.0).timeout
-
 
 	# -----------------------------------------------------
 	# CONTROLLO VITTORIA
@@ -361,10 +371,8 @@ func attack_entity():
 	if await _check_victory():
 		return
 
-
 	# Se il nemico è vivo
 	entity_turn()
-
 
 # =========================================================
 # TENTATIVO DI FUGA

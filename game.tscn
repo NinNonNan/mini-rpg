@@ -2,143 +2,201 @@
 
 [ext_resource type="Script" uid="uid://d1qiyot78sli2" path="res://game.gd" id="1_80nbo"]
 [ext_resource type="Script" uid="uid://ivg5beicys7p" path="res://dialogue_manager.gd" id="2_feb5d"]
+[ext_resource type="FontFile" uid="uid://bjxpha2a8bpoo" path="res://fonts/freecam v2.ttf" id="2_hve3p"]
 [ext_resource type="Script" uid="uid://cfht24jt8567h" path="res://combat_manager.gd" id="3_fc0e3"]
 [ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://empathy_manager.gd" id="4_fc0e3"]
 [ext_resource type="Script" uid="uid://bgde6rbxnopxg" path="res://item_manager.gd" id="5_7jktm"]
 [ext_resource type="Script" uid="uid://c0f4lcycq4hn1" path="res://special_manager.gd" id="6_ryrav"]
 [ext_resource type="Script" uid="uid://686s31eqltii" path="res://growth_manager.gd" id="7_eow3j"]
+[ext_resource type="Script" uid="uid://cjtaam8uwmljd" path="res://quick_time_combat.gd" id="8_j5wjh"]
+[ext_resource type="Script" uid="uid://hgu7c8wn2yv0" path="res://death_manager.gd" id="8_vef74"]
+[ext_resource type="Script" uid="uid://bdhqckafmw8k5" path="res://meteo_manager.gd" id="11_mfdv2"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ryrav"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_eow3j"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_j5wjh"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_vef74"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_hve3p"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_mfdv2"]
 
 [sub_resource type="Theme" id="Theme_feb5d"]
 
 [node name="Game" type="Control" unique_id=1206785521]
 layout_mode = 3
-anchors_preset = 0
-offset_right = 40.0
-offset_bottom = 40.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 theme = SubResource("Theme_80nbo")
 script = ExtResource("1_80nbo")
 
-[node name="UI" type="CenterContainer" parent="." unique_id=1423096150]
-custom_minimum_size = Vector2(1280, 720)
+[node name="UI" type="VBoxContainer" parent="." unique_id=2136926454]
 layout_mode = 0
-offset_right = 1280.0
-offset_bottom = 720.0
+offset_right = 718.0
+offset_bottom = 1011.0
 
 [node name="VBC_Main" type="VBoxContainer" parent="UI" unique_id=574882]
 layout_mode = 2
+size_flags_stretch_ratio = 0.0
 alignment = 1
 
-[node name="PC_Text" type="PanelContainer" parent="UI/VBC_Main" unique_id=2114323482]
-custom_minimum_size = Vector2(400, 50)
+[node name="MC_Meteo" type="MarginContainer" parent="UI/VBC_Main" unique_id=1243688036]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="PC" type="PanelContainer" parent="UI/VBC_Main/MC_Meteo" unique_id=21597547]
 layout_mode = 2
 
-[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/PC_Text" unique_id=1912386474]
+[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/MC_Meteo/PC" unique_id=406220283]
 layout_mode = 2
 
-[node name="SPL" type="Control" parent="UI/VBC_Main/PC_Text/HBC" unique_id=1223341402]
-custom_minimum_size = Vector2(20, 50)
+[node name="MeteoText" type="Label" parent="UI/VBC_Main/MC_Meteo/PC/HBC" unique_id=765656781]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
+
+[node name="MC_Enemy" type="MarginContainer" parent="UI/VBC_Main" unique_id=1916761013]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="PC" type="PanelContainer" parent="UI/VBC_Main/MC_Enemy" unique_id=1906583390]
+custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 
-[node name="StoryText" type="Label" parent="UI/VBC_Main/PC_Text/HBC" unique_id=173698416]
-custom_minimum_size = Vector2(350, 50)
+[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/MC_Enemy/PC" unique_id=604191020]
 layout_mode = 2
+
+[node name="Icon" type="TextureRect" parent="UI/VBC_Main/MC_Enemy/PC/HBC" unique_id=711678062]
+clip_contents = true
+custom_minimum_size = Vector2(200, 200)
+layout_mode = 2
+stretch_mode = 3
+
+[node name="StatsText" type="Label" parent="UI/VBC_Main/MC_Enemy/PC/HBC" unique_id=1813174247]
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+autowrap_mode = 3
+
+[node name="MC_Story" type="MarginContainer" parent="UI/VBC_Main" unique_id=2088841522]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 5
+
+[node name="PC" type="PanelContainer" parent="UI/VBC_Main/MC_Story" unique_id=315375987]
+layout_mode = 2
+
+[node name="HBC" type="VBoxContainer" parent="UI/VBC_Main/MC_Story/PC" unique_id=1219678298]
+layout_mode = 2
+
+[node name="StoryText" type="Label" parent="UI/VBC_Main/MC_Story/PC/HBC" unique_id=173698416]
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
+vertical_alignment = 1
 autowrap_mode = 2
 
-[node name="SPR" type="Control" parent="UI/VBC_Main/PC_Text/HBC" unique_id=1898118644]
-custom_minimum_size = Vector2(20, 50)
+[node name="MC_Player" type="MarginContainer" parent="UI/VBC_Main" unique_id=1298504504]
 layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
 
-[node name="PC_Player" type="PanelContainer" parent="UI/VBC_Main" unique_id=107564743]
+[node name="PC" type="PanelContainer" parent="UI/VBC_Main/MC_Player" unique_id=107564743]
 custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 
-[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/PC_Player" unique_id=1107832990]
+[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/MC_Player/PC" unique_id=1107832990]
 layout_mode = 2
 
-[node name="SPL" type="Control" parent="UI/VBC_Main/PC_Player/HBC" unique_id=50189592]
-custom_minimum_size = Vector2(15, 50)
+[node name="Icon" type="TextureRect" parent="UI/VBC_Main/MC_Player/PC/HBC" unique_id=1964696772]
+custom_minimum_size = Vector2(200, 200)
 layout_mode = 2
+stretch_mode = 3
 
-[node name="Icon" type="Button" parent="UI/VBC_Main/PC_Player/HBC" unique_id=778530743]
-clip_contents = true
-custom_minimum_size = Vector2(50, 50)
-layout_mode = 2
-theme_override_font_sizes/font_size = 30
-theme_override_styles/normal = SubResource("StyleBoxEmpty_ryrav")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_eow3j")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_j5wjh")
-clip_text = true
-
-[node name="SPR" type="Control" parent="UI/VBC_Main/PC_Player/HBC" unique_id=235309847]
-custom_minimum_size = Vector2(15, 50)
-layout_mode = 2
-
-[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Player/HBC" unique_id=850942249]
+[node name="StatsText" type="Label" parent="UI/VBC_Main/MC_Player/PC/HBC" unique_id=850942249]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
+horizontal_alignment = 1
+vertical_alignment = 1
 autowrap_mode = 3
-
-[node name="PC_Enemy" type="PanelContainer" parent="UI/VBC_Main" unique_id=1906583390]
-custom_minimum_size = Vector2(400, 75)
-layout_mode = 2
-
-[node name="HBC" type="HBoxContainer" parent="UI/VBC_Main/PC_Enemy" unique_id=604191020]
-layout_mode = 2
-
-[node name="SPL" type="Control" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1538316283]
-custom_minimum_size = Vector2(15, 50)
-layout_mode = 2
-
-[node name="Icon" type="Button" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1413007516]
-clip_contents = true
-custom_minimum_size = Vector2(50, 50)
-layout_mode = 2
-theme_override_font_sizes/font_size = 30
-theme_override_styles/normal = SubResource("StyleBoxEmpty_vef74")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_hve3p")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_mfdv2")
-clip_text = true
-
-[node name="SPR" type="Control" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1844900066]
-custom_minimum_size = Vector2(15, 50)
-layout_mode = 2
-
-[node name="StatsText" type="Label" parent="UI/VBC_Main/PC_Enemy/HBC" unique_id=1813174247]
-custom_minimum_size = Vector2(300, 50)
-layout_mode = 2
-autowrap_mode = 3
-
-[node name="Spacer" type="Control" parent="UI/VBC_Main" unique_id=470077312]
-custom_minimum_size = Vector2(400, 25)
-layout_mode = 2
 
 [node name="VBC_Button" type="VBoxContainer" parent="UI/VBC_Main" unique_id=1513875570]
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
 
-[node name="Choice1" type="Button" parent="UI/VBC_Main/VBC_Button" unique_id=1870710925]
+[node name="MC1" type="MarginContainer" parent="UI/VBC_Main/VBC_Button" unique_id=1472075707]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 5
+
+[node name="Choice1" type="Button" parent="UI/VBC_Main/VBC_Button/MC1" unique_id=1870710925]
+custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 theme = SubResource("Theme_feb5d")
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
 
-[node name="Choice2" type="Button" parent="UI/VBC_Main/VBC_Button" unique_id=887108862]
+[node name="MC2" type="MarginContainer" parent="UI/VBC_Main/VBC_Button" unique_id=323427949]
 layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 5
 
-[node name="Choice3" type="Button" parent="UI/VBC_Main/VBC_Button" unique_id=770643306]
+[node name="Choice2" type="Button" parent="UI/VBC_Main/VBC_Button/MC2" unique_id=887108862]
+custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
+
+[node name="MC3" type="MarginContainer" parent="UI/VBC_Main/VBC_Button" unique_id=371694208]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="Choice3" type="Button" parent="UI/VBC_Main/VBC_Button/MC3" unique_id=770643306]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
+
+[node name="QTE" type="Control" parent="." unique_id=1306013137]
+custom_minimum_size = Vector2(400, 50)
+anchors_preset = 0
+offset_left = 439.0
+offset_top = 455.0
+offset_right = 839.0
+offset_bottom = 505.0
+script = ExtResource("8_j5wjh")
+
+[node name="Cursor" type="ColorRect" parent="QTE" unique_id=955510604]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+color = Color(1, 1, 1, 0)
+
+[node name="TextureProgressBar" type="TextureProgressBar" parent="QTE" unique_id=378922564]
+custom_minimum_size = Vector2(400, 50)
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+tint_under = Color(1, 0.1254902, 1, 1)
+tint_over = Color(1, 0.05490196, 1, 1)
+tint_progress = Color(1, 0.03137255, 1, 1)
 
 [node name="Manager" type="Node" parent="." unique_id=38976104]
 
@@ -161,3 +219,9 @@ script = ExtResource("6_ryrav")
 
 [node name="Growth" type="Node" parent="Manager" unique_id=312432868]
 script = ExtResource("7_eow3j")
+
+[node name="Death" type="Node" parent="Manager" unique_id=2104047517]
+script = ExtResource("8_vef74")
+
+[node name="Meteo" type="Node" parent="Manager" unique_id=146860750]
+script = ExtResource("11_mfdv2")

@@ -2,15 +2,19 @@ class_name Game
 extends Control
 
 # --- Riferimenti ai Nodi dell'Interfaccia Utente (UI) ---
-@onready var text = $UI/VBC_Main/PC_Text/HBC/StoryText
-@onready var player_icon: Button = $UI/VBC_Main/PC_Player/HBC/Icon # Riferimento al pulsante icona giocatore
-@onready var player_stats = $UI/VBC_Main/PC_Player/HBC/StatsText # Riferimento al box statistiche giocatore
-@onready var enemy_stats_box = $UI/VBC_Main/PC_Enemy         # Riferimento al CONTENITORE nemico
-@onready var enemy_icon: Button = $UI/VBC_Main/PC_Enemy/HBC/Icon # Riferimento al pulsante icona nemico
-@onready var enemy_stats = $UI/VBC_Main/PC_Enemy/HBC/StatsText # Riferimento al TESTO nemico
-@onready var b1 = $UI/VBC_Main/VBC_Button/Choice1
-@onready var b2 = $UI/VBC_Main/VBC_Button/Choice2
-@onready var b3 = $UI/VBC_Main/VBC_Button/Choice3
+@onready var meteo_stats = $UI/VBC_Main/MC_Meteo/PC/HBC/MeteoText
+@onready var enemy_stats_box = $UI/VBC_Main/MC_Enemy/PC
+@onready var enemy_icon = $UI/VBC_Main/MC_Enemy/PC/HBC/Icon
+@onready var enemy_stats = $UI/VBC_Main/MC_Enemy/PC/HBC/StatsText
+@onready var text = $UI/VBC_Main/MC_Story/PC/HBC/StoryText
+@onready var player_icon = $UI/VBC_Main/MC_Player/PC/HBC/Icon
+@onready var player_stats = $UI/VBC_Main/MC_Player/PC/HBC/StatsText
+@onready var b1 = $UI/VBC_Main/VBC_Button/MC1/Choice1
+@onready var b2 = $UI/VBC_Main/VBC_Button/MC2/Choice2
+@onready var b3 = $UI/VBC_Main/VBC_Button/MC3/Choice3
+
+# --- QTE ---
+@onready var qte = $QTE
 
 # --- Manager di Sistema ---
 @onready var combat_manager = $Manager/Combat as CombatManager
@@ -19,124 +23,90 @@ extends Control
 @onready var item_manager = $Manager/Item as ItemManager
 @onready var special_manager = $Manager/Special as SpecialManager
 @onready var growth_manager = $Manager/Growth as GrowthManager
+@onready var death_manager = $Manager/Death as DeathManager
+@onready var meteo_manager = $Manager/Meteo as MeteoManager
 
-# --- Variabili di Stato del Gioco ---
-# Salute del giocatore
+# --- Stato del Gioco ---
 var health: int = 10
-# Mana del giocatore
 var mana: int = 10
-# Valori massimi (caricati da JSON)
 var max_health: int = 10
 var max_mana: int = 10
-# Inventario del giocatore (contiene gli ID degli oggetti)
 var inventory: Array[String] = []
-# Pronome dell'entità corrente (es: "il", "la")
 var current_entity_pronoun: String = ""
-# Scena da mostrare in caso di vittoria
 var current_victory_scene: String = ""
-# ID dell'entità corrente (per combattimento o dialogo)
 var current_entity_id: String = ""
+var was_in_combat: bool = false # Aggiunto per tracciare la vittoria in combattimento
 
-# Segnale emesso quando si clicca un'icona (player o enemy) durante la selezione
+var qte_context: String = "" # Contesto per sapere perché è stato avviato il QTE
 signal target_clicked(target_type)
-
-# Opzione grafica: Se true, mostra cuori (❤️) invece dei numeri.
 var use_visual_health: bool = true
 
-# --- Database di Gioco (caricati da JSON) ---
-# Contiene tutte le scene narrative del gioco
+# --- Database ---
 var story: Dictionary = {}
-# Contiene tutti i dati del file story.json
 var story_data: Dictionary = {}
-# Database degli oggetti (armi, pozioni, ecc.)
 var item_data: Dictionary = {}
-# Database delle entità (nemici, NPC, ecc.)
 var entity_data: Dictionary = {}
-# Database dei tipi di danno (taglio, fuoco, ecc.)
 var damage_types_data: Dictionary = {}
-
-# Nome della scena attualmente mostrata
 var current_scene: String = "start"
 
-# Funzione chiamata da Godot quando il nodo è pronto e aggiunto alla scena.
 func _ready():
-	# DEBUG: Verifica che i nodi essenziali siano stati trovati
+	# QTE
+	if qte:
+		qte.qte_finished.connect(_on_qte_finished)
+
+	# Controlli nodi
 	if not text:
 		push_error(tr("error_node_storytext_not_found"))
 	if not player_stats:
 		push_error(tr("error_node_playerstats_not_found"))
 	if not enemy_stats_box:
-		# FALLBACK: Se non trova "PC_Enemy", prova a cercare "PC_enemy" (minuscolo)
-		if $UI/VBC_Main.has_node("PC_enemy"):
-			enemy_stats_box = $UI/VBC_Main.get_node("PC_enemy")
-			# Se abbiamo recuperato il box, cerchiamo di recuperare anche il testo interno
-			if enemy_stats_box.has_node("StatsText"):
-				enemy_stats = enemy_stats_box.get_node("StatsText")
-		else:
-			push_error(tr("warning_node_enemybox_not_found"))
+		push_warning(tr("warning_node_enemybox_not_found"))
 	if not special_manager:
 		push_error(tr("error_node_special_not_found"))
 	if not growth_manager:
-		push_error("ERRORE: Nodo GrowthManager non trovato in $Manager.")
+		push_error(tr("error_node_growth_not_found"))
+	if not death_manager:
+		push_error(tr("error_node_death_not_found"))
+	if not meteo_manager:
+		push_error(tr("error_node_meteo_not_found"))
 
-	# Impostazioni grafiche per l'interfaccia
-	text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
-	b1.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
-	b2.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
-	b3.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
-	
-	# FIX: Assicura che i button delle icone abbiano un colore di testo visibile,
-	# bypassando eventuali problemi del tema dell'editor. Se lo sfondo del gioco
-	# è chiaro, prova a usare Color.BLACK invece di Color.WHITE.
-	if player_icon:
-		player_icon.add_theme_color_override("font_color", Color.WHITE)
-		player_icon.add_theme_font_size_override("font_size", 30)
-	if enemy_icon:
-		enemy_icon.add_theme_color_override("font_color", Color.WHITE)
-		enemy_icon.add_theme_font_size_override("font_size", 30)
+	# Impostazioni grafica
+	#text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
+	for btn in [b1, b2, b3]:
+		btn.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
 
 	# Caricamento dati e traduzioni
 	_load_story()
 	_load_translations()
-	
-	# Inietta il riferimento a 'Game' in tutti i manager per dare accesso allo stato globale
-	if combat_manager: combat_manager.game = self
-	if item_manager: item_manager.game = self
-	if dialogue_manager: dialogue_manager.game = self
-	if empathy_manager: empathy_manager.game = self
-	if special_manager: special_manager.game = self
-	if growth_manager: growth_manager.game = self
-	
-	# Collega i segnali del DialogueManager per gestire l'interfaccia durante i dialoghi
+
+	# Iniezione Game nei manager
+	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager]:
+		if mgr:
+			mgr.game = self
+
+	# Connessione DialogueManager
 	if dialogue_manager:
 		dialogue_manager.text_requested.connect(func(t): text.text = t)
 		dialogue_manager.choices_requested.connect(_on_dialogue_choices_requested)
 		dialogue_manager.stats_updated.connect(update_stats)
 		dialogue_manager.dialogue_finished.connect(show_scene)
 		dialogue_manager.dialogue_failed.connect(_start_prepared_combat)
-	
-	# Avvia il gioco mostrando la prima scena
+
+	# Avvio scena iniziale
 	show_scene(current_scene)
 
-# Carica i dati della storia dal file story.json
+# --- Caricamento JSON ---
 func _load_story():
-	# Usiamo la classe StoryLoader per caricare e validare il file JSON
 	var json_data = StoryLoader.load_json_file("res://story.json")
-	
 	if json_data == null:
-		text.text = tr("error_story_load")
+		text.text = tr("error_story_load_short")
 		return
-
-	# Conserviamo una copia completa di tutti i dati del JSON
 	story_data = json_data
-
-	# Popoliamo i dizionari di gioco con i dati caricati
 	story = json_data.get("scenes", {})
 	item_data = json_data.get("items", {})
 	entity_data = json_data.get("entities", {})
 	damage_types_data = json_data.get("damage_types", {})
-	
-	# Carica dati giocatore
+
 	var player_data = json_data.get("player", {})
 	if player_data.has("energy"):
 		for stat in player_data["energy"]:
@@ -146,299 +116,183 @@ func _load_story():
 			elif stat.get("type") == "magic":
 				max_mana = int(stat.get("value", 10))
 				mana = max_mana
+	if player_icon and player_data.has("icon") and player_data["icon"] != "":
+		player_icon.texture = load(player_data["icon"])
 
-	if player_icon and player_data.has("icon"):
-		player_icon.text = player_data["icon"]
-
-# Carica il file di traduzione e lo registra nel TranslationServer
 func _load_translations(lang_code: String = "it"):
 	var file_path = "res://%s.json" % lang_code
 	if not FileAccess.file_exists(file_path):
-		push_error(tr("error_push_translation_file_not_found") % file_path)
-		text.text = tr("error_translation_file_not_found") % lang_code
+		push_error(tr("error_translation_file_not_found") % file_path)
 		return
-
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	var content = file.get_as_text()
 	file.close()
-
 	var json_data = JSON.parse_string(content)
+	if json_data != null:
+		var translation = Translation.new()
+		translation.locale = lang_code
+		for key in json_data:
+			translation.add_message(key, json_data[key])
+		TranslationServer.add_translation(translation)
+		TranslationServer.set_locale(lang_code)
 
-	if json_data == null:
-		push_error(tr("error_push_translation_json_parse") % file_path)
-		text.text = tr("error_translation_file_parse") % lang_code
-		return
-
-	# Creiamo una nuova traduzione e aggiungiamo ogni stringa al server
-	var translation = Translation.new()
-	for key in json_data:
-		translation.add_message(key, json_data[key])
-
-	TranslationServer.add_translation(translation)
-
-# --- Gestione Energia (Interfaccia per SpecialManager) ---
-
-# Recupera il valore attuale di un tipo di energia (es. "life", "magic")
+# --- Stats ---
 func get_player_energy_value(type_id: String) -> int:
 	match type_id:
 		"life": return health
 		"magic": return mana
 	return 0
 
-# Modifica il valore di un'energia del giocatore (gestisce limiti e Game Over)
 func modify_player_energy(type_id: String, amount: int):
 	match type_id:
 		"life":
 			health = clampi(health + amount, 0, max_health)
-			if health <= 0:
-				game_over()
+			if health <= 0: game_over()
 		"magic":
 			mana = clampi(mana + amount, 0, max_mana)
 	update_stats()
 
-# Genera una stringa visiva per la salute (es. "❤️ 3" o "3 HP")
 func get_health_string(amount: int) -> String:
-	if use_visual_health:
-		return "❤️ %d" % amount
-	else:
-		return str(amount) + " HP"
+	return "❤️ %d" % amount if use_visual_health else str(amount) + " HP"
 
-# Genera una stringa visiva per il mana (es. "💧 10" o "10 MP")
 func get_mana_string(amount: int) -> String:
-	if use_visual_health:
-		return "💧 %d" % amount
-	else:
-		return str(amount) + " MP"
+	return "💧 %d" % amount if use_visual_health else str(amount) + " MP"
 
-# Recupera l'icona associata a un tipo di danno (es. "fuoco" -> "🔥")
 func get_damage_type_icon(type_id: String) -> String:
 	if damage_types_data.has(type_id):
 		return damage_types_data[type_id].get("icon", "")
 	return ""
 
-# Aggiorna il testo delle statistiche del giocatore e del nemico.
 func update_stats():
-	# Costruisce la stringa dell'inventario
 	var inventory_names = []
 	for item_id in inventory:
-		var item_name = item_manager.get_item_name(item_id)
 		var icon = item_manager.get_item_icon(item_id)
-		
-		# Se l'icona esiste, usiamo QUELLA per l'inventario. Altrimenti il nome.
-		if icon != "":
-			inventory_names.append(icon)
-		else:
-			inventory_names.append(item_name)
-			
-	var inventory_string = tr("inventory_empty")
-	if not inventory_names.is_empty():
-		inventory_string = ", ".join(inventory_names)
-	
-	# Costruisce la stringa delle statistiche dell'entità (nemico o NPC)
+		var item_name = item_manager.get_item_name(item_id)
+		inventory_names.append(icon if icon != "" else item_name)
+	var inv_str = tr("inventory_empty")
+	if inventory_names.size() > 0:
+		inv_str = ", ".join(inventory_names)
+
 	var entity_text = ""
-	var show_enemy_stats = false
-	
-	if combat_manager and combat_manager.current_entity_health > 0: # In combattimento
-		show_enemy_stats = true
-		if empathy_manager and empathy_manager.is_known:
-			entity_text = tr("stats_enemy_hp") % get_health_string(combat_manager.current_entity_health)
-			entity_text += "\n" + tr("stats_mood") % empathy_manager.current_mood
-			entity_text += empathy_manager.get_weakness_immunity_text(current_entity_id)
-		else:
-			entity_text = tr("stats_enemy_hp_unknown")
-			entity_text += "\n" + tr("stats_mood_unknown")
-	elif dialogue_manager and dialogue_manager.is_active: # In dialogo
-		show_enemy_stats = true
-		if empathy_manager and empathy_manager.is_known:
-			entity_text = tr("stats_mood") % dialogue_manager.current_mood
-			entity_text += empathy_manager.get_weakness_immunity_text(current_entity_id)
-		else:
-			entity_text = tr("stats_mood_unknown")
-	# Caso 3: Analisi passiva (es. pulsante "Esamina" nella storia)
+	var show_enemy = false
+	if combat_manager and combat_manager.current_entity_health > 0:
+		show_enemy = true
+		entity_text = tr("stats_enemy_hp") % get_health_string(combat_manager.current_entity_health)
+	elif dialogue_manager and dialogue_manager.is_active:
+		show_enemy = true
 	elif current_entity_id != "" and empathy_manager and empathy_manager.is_known:
-		show_enemy_stats = true
-		# Recuperiamo i dati dall'archivio entità
+		show_enemy = true
 		var entity = entity_data.get(current_entity_id, {})
-		
 		var hp = 0
 		if entity.has("energy"):
 			for stat in entity["energy"]:
 				if stat.get("type") == "life":
 					hp = int(stat.get("value", 0))
-					break
-		
 		entity_text = tr("stats_enemy_hp") % get_health_string(hp)
-		entity_text += "\n" + tr("stats_mood") % empathy_manager.current_mood
-		entity_text += empathy_manager.get_weakness_immunity_text(current_entity_id)
-			
-	# Aggiorna il box del giocatore
 	if player_stats:
-		player_stats.text = tr("stats_player") % [get_health_string(health), get_mana_string(mana), inventory_string]
-
-	# Aggiorna e gestisce la visibilità del box del nemico
+		player_stats.text = tr("stats_player") % [get_health_string(health), get_mana_string(mana), inv_str]
 	if enemy_stats_box and enemy_stats:
 		enemy_stats.text = entity_text
-		
 		if enemy_icon:
-			var icon = ""
-			if current_entity_id != "":
-				var entity = entity_data.get(current_entity_id, {})
-				icon = entity.get("icon", "")
-				var entity_def = entity_data.get(current_entity_id, {})
-				icon = entity_def.get("icon", "❓") # Usa un'icona di default se non specificata
-			enemy_icon.text = icon
+			var icon_path = entity_data.get(current_entity_id, {}).get("icon", "")
+			if icon_path != "":
+				enemy_icon.texture = load(icon_path)
+			else:
+				enemy_icon.texture = null
+		enemy_stats_box.visible = true
 
-		enemy_stats_box.visible = show_enemy_stats
-
-# Mostra una scena specifica basata sul suo nome.
+# --- Scene & Choices ---
 func show_scene(scene_name):
-	# Imposta la scena corrente e resetta lo stato dei manager
-	# Se stiamo cambiando scena vera e propria (non ricaricando la stessa per aggiornare il testo),
-	# resettiamo i dati del nemico corrente per evitare "fantasmi" (es. stats del drago nella foresta).
+	# Rileva la sconfitta di un'entità in combattimento.
+	# Se stavamo combattendo e ora passiamo alla scena di vittoria, registra la morte.
+	if was_in_combat and current_entity_id != "" and scene_name == current_victory_scene:
+		notify_entity_death(current_entity_id)
+
 	if scene_name != current_scene:
 		current_entity_id = ""
-		if empathy_manager:
-			empathy_manager.reset()
-
-	# Imposta la scena corrente
+		if empathy_manager: empathy_manager.reset()
+	was_in_combat = false # Resetta il flag ad ogni cambio di scena
 	current_scene = scene_name
+	if combat_manager: combat_manager.current_entity_health = 0
+	# Aggiorna il meteo al cambio di scena
+	if meteo_manager: meteo_manager.roll_weather()
 	
-	if combat_manager:
-		combat_manager.current_entity_health = 0
-	if dialogue_manager:
-		dialogue_manager.reset()
-		
+	if dialogue_manager: dialogue_manager.reset()
 	var scene = story[scene_name]
 	text.text = tr(scene["text"])
 	update_stats()
-	
-	# Configura i pulsanti in base alle scelte disponibili nella scena
-	var choices = scene["choices"]
+
 	var buttons = [b1, b2, b3]
+	var choices = scene.get("choices", [])
 	for i in range(buttons.size()):
 		if i < choices.size():
 			buttons[i].text = tr(choices[i]["text"])
 			buttons[i].show()
-			var choice = choices[i]
 			_clear_signals(buttons[i])
-			buttons[i].pressed.connect(func(): handle_choice(choice))
+			buttons[i].pressed.connect(func(): handle_choice(choices[i]))
 		else:
 			buttons[i].hide()
 
-# Gestisce la logica quando un pulsante di scelta viene premuto.
 func handle_choice(choice):
-	# 1. Gestione Azioni Speciali (definite nel JSON)
 	if choice.has("action"):
 		match choice["action"]:
 			"pickup":
-				var item = choice.get("item_id", "oggetto")
+				var item = choice.get("item_id", "")
 				if not item in inventory:
 					inventory.append(item)
-					var item_name = item_manager.get_item_name(item)
 					var icon = item_manager.get_item_icon(item)
-					
-					# Messaggio di raccolta con icona se disponibile
-					if icon != "":
-						text.text = tr("pickup_success") % (icon + " " + item_name)
-					else:
-						text.text = tr("pickup_success") % item_name
-						
+					var item_name = item_manager.get_item_name(item)
+					var display_name = ("%s " % icon if icon and icon != "" else "") + item_name
+					text.text = tr("item_picked_up") % display_name
 					update_stats()
-					await get_tree().create_timer(1.0).timeout
+			"qte":
+				start_qte_event()
 			"combat":
-				# Prepara i dati per l'incontro (combattimento o dialogo)
-				var next_entity_id = choice.get("entity_id", "")
-				current_victory_scene = choice.get("victory_scene", "start")
-				var entity = entity_data.get(next_entity_id, {})
-				current_entity_pronoun = entity.get("pronoun", "")
-				
-				# Resettiamo la conoscenza SOLO se stiamo affrontando un nuovo nemico
-				if empathy_manager and current_entity_id != next_entity_id:
-					empathy_manager.reset()
-				
-				current_entity_id = next_entity_id
-				var mood = entity.get("mood", -1) # Default a ostile
-
-				if mood >= 0:
-					# L'entità non è ostile, offri la scelta tra dialogo e attacco
-					var entity_name_key = entity.get("name", current_entity_id)
-					var entity_name = tr(entity_name_key)
-					text.text = tr("encounter_neutral") % entity_name
-					update_stats()
-					
-					b1.text = tr("choice_attack")
-					b1.show()
-					_clear_signals(b1)
-					b1.pressed.connect(_start_prepared_combat)
-					
-					b2.text = tr("choice_dialogue")
-					b2.show()
-					_clear_signals(b2)
-					b2.pressed.connect(_start_prepared_dialogue)
-					
-					b3.hide()
-				else:
-					# L'entità è ostile, inizia subito il combattimento
-					_start_prepared_combat()
-				return # Il flusso viene gestito dall'incontro, non dal cambio scena
-			"restart":
-				health = max_health
-				mana = max_mana
-				inventory.clear()
-				show_scene("start")
-				return
-			"analyze":
-				var entity_id = choice.get("entity_id", "")
-				current_entity_id = entity_id # Salviamo chi stiamo analizzando!
-				
-				var analysis_text = ""
-				if empathy_manager:
-					analysis_text = empathy_manager.analyze(entity_id)
-				text.text = analysis_text
-				update_stats()
-				await get_tree().create_timer(2.0).timeout
-
-	# 2. Cambio Scena Normale
+				current_entity_id = choice.get("entity_id", "")
+				current_victory_scene = choice.get("victory_scene", "")
+				_start_prepared_combat()
+			"dialogue":
+				current_entity_id = choice.get("entity_id", "")
+				current_victory_scene = choice.get("victory_scene", "")
+				if entity_data.has(current_entity_id):
+					current_entity_pronoun = entity_data[current_entity_id].get("pronoun", "")
+				_start_prepared_dialogue()
 	if choice.has("next"):
 		show_scene(choice["next"])
 
-# --- Funzioni di Incontro (Combattimento e Dialogo) ---
-
+# --- Combattimento & Dialogo ---
 func _start_prepared_combat():
 	if combat_manager:
+		was_in_combat = true
 		combat_manager.start_combat(current_entity_id, current_victory_scene)
 
 func _start_prepared_dialogue():
-	var entity = entity_data.get(current_entity_id, {})
-	var mood = entity.get("mood", 0)
 	if dialogue_manager:
-		dialogue_manager.start_dialogue(current_entity_id, current_entity_pronoun, mood, current_victory_scene)
-
-# --- Logica del Dialogo ---
+		was_in_combat = false # Assicura che il dialogo non venga conteggiato come combattimento
+		dialogue_manager.start_dialogue(current_entity_id, current_entity_pronoun, 0, current_victory_scene)
 
 func _on_dialogue_choices_requested(choices):
 	var buttons = [b1, b2, b3]
 	for i in range(buttons.size()):
 		if i < choices.size():
-			var choice = choices[i]
-			buttons[i].text = tr(choice["text"])
+			buttons[i].text = tr(choices[i]["text"])
 			buttons[i].show()
 			_clear_signals(buttons[i])
-			# Collega il pulsante per chiamare handle_choice nel DialogueManager
-			buttons[i].pressed.connect(func(): dialogue_manager.handle_choice(choice["action"]))
+			buttons[i].pressed.connect(func(): dialogue_manager.handle_choice(choices[i]["action"]))
 		else:
 			buttons[i].hide()
 
+# --- Game Over ---
 func game_over():
+	if death_manager:
+		death_manager.record_player_death()
 	text.text = tr("game_over_text")
+	enable_choices()
 	health = max_health
 	mana = max_mana
 	inventory.clear()
-	
-	# Resetta lo stato dei manager
 	if combat_manager: combat_manager.current_entity_health = 0
 	if dialogue_manager: dialogue_manager.reset()
-	
 	b1.text = tr("game_over_choice")
 	b1.show()
 	_clear_signals(b1)
@@ -446,82 +300,123 @@ func game_over():
 	b2.hide()
 	b3.hide()
 
-# Funzione helper per rimuovere tutti i collegamenti di un segnale di un pulsante
-func _clear_signals(button: Button) -> void:
+func notify_entity_death(entity_id: String):
+	if death_manager:
+		death_manager.record_entity_death(entity_id)
+
+func _clear_signals(button: Button):
 	for conn in button.pressed.get_connections():
 		button.pressed.disconnect(conn.callable)
 
-# --- Gestione Selezione Bersaglio ---
+# --- QTE ---
+func start_qte_event(message_key: String = "qte_start_default", context: String = ""):
+	disable_choices()
+	text.text = tr(message_key)
+	qte_context = context
+	if qte: qte.start(b1) # Passa b1 per sovrapporre la barra al pulsante
+
+func _on_qte_finished(value):
+	var result_text = tr("qte_result_miss")
+	var multiplier = 0.0 # Un "MANCATO" non infligge danno
+	if value > 0.45 and value < 0.55:
+		result_text = tr("qte_result_perfect")
+		multiplier = 2.0
+	elif value > 0.3 and value < 0.7:
+		result_text = tr("qte_result_good")
+		multiplier = 1.2
+	text.text = result_text
+	
+	# Aspetta un attimo per far leggere il risultato del QTE al giocatore
+	await get_tree().create_timer(1.0).timeout
+	
+	# Gestisce il risultato del QTE in base al contesto
+	if qte_context == "player_attack":
+		if combat_manager:
+			combat_manager.resolve_player_attack(multiplier)
+	
+	qte_context = "" # Resetta il contesto
+	# I pulsanti verranno riattivati dal CombatManager al prossimo turno del giocatore
 
 func enable_target_selection():
-	# Abilita le icone come pulsanti cliccabili
-	var targets = {
-		"player": player_icon,
-		"enemy": enemy_icon
-	}
+	enable_choices()
+	text.text = tr("combat_select_target")
 	
-	for type in targets:
-		var btn = targets[type]
-		if btn:
-			# Reset visuale e logico
-			btn.mouse_filter = Control.MOUSE_FILTER_STOP
-			# Feedback visivo: pulsante attivo
-			btn.modulate = Color(1.2, 1.2, 1.2) 
-			
-			# Collega il segnale se non è già collegato
-			if not btn.is_connected("pressed", _on_target_icon_pressed):
-				btn.pressed.connect(_on_target_icon_pressed.bind(type))
+	# Opzione 1: Player
+	b1.text = "Player"
+	b1.show()
+	_clear_signals(b1)
+	b1.pressed.connect(func(): target_clicked.emit("player"))
+	
+	# Opzione 2: Nemico
+	if current_entity_id != "" and combat_manager and combat_manager.current_entity_health > 0:
+		var e_data = entity_data.get(current_entity_id, {})
+		var e_name = e_data.get("name", "Nemico")
+		b2.text = tr(e_name)
+		b2.show()
+		_clear_signals(b2)
+		b2.pressed.connect(func(): target_clicked.emit("enemy"))
+	else:
+		b2.hide()
+
+	# Opzione 3: Indietro
+	b3.text = tr("combat_back")
+	b3.show()
+	_clear_signals(b3)
+	b3.pressed.connect(func(): target_clicked.emit("back"))
 
 func disable_target_selection():
-	var targets = [player_icon, enemy_icon]
-	for btn in targets:
-		if btn:
-			btn.mouse_filter = Control.MOUSE_FILTER_IGNORE # Ignora i click
-			btn.modulate = Color(1, 1, 1) # Colore normale
-			
-			# Scollega il segnale per pulizia
-			if btn.is_connected("pressed", _on_target_icon_pressed):
-				btn.pressed.disconnect(_on_target_icon_pressed)
+	for btn in [b1, b2, b3]:
+		btn.hide()
+		_clear_signals(btn)
 
-# Callback interna chiamata quando si preme un'icona
-func _on_target_icon_pressed(type: String):
-	# Emette il segnale per il CombatManager
-	emit_signal("target_clicked", type)
+func disable_choices():
+	for btn in [b1, b2, b3]:
+		btn.disabled = true
 
-# --- Gestione Menu Crescita (Growth) ---
+func enable_choices():
+	for btn in [b1, b2, b3]:
+		btn.disabled = false
 
+# --- Menu Crescita ---
 func start_growth_menu(next_scene: String):
-	# Mostra il menu di distribuzione energia
-	var energy = growth_manager.available_energy
+	current_victory_scene = next_scene
+	
+	if not growth_manager:
+		show_scene(next_scene)
+		return
+		
+	enable_choices()
+	_update_growth_menu()
+
+func _update_growth_menu():
+	var energy = 0
+	if "available_energy" in growth_manager:
+		energy = growth_manager.available_energy
+	
 	text.text = tr("growth_menu_title") % energy
 	
-	# Reset pulsanti
+	# Pulsante 1: Vita
+	b1.text = tr("growth_btn_life") % max_health
+	b1.show()
 	_clear_signals(b1)
+	b1.pressed.connect(func():
+		if growth_manager.has_method("upgrade_stat") and growth_manager.upgrade_stat("life"):
+			_update_growth_menu()
+			update_stats()
+	)
+	
+	# Pulsante 2: Magia
+	b2.text = tr("growth_btn_magic") % max_mana
+	b2.show()
 	_clear_signals(b2)
-	_clear_signals(b3)
+	b2.pressed.connect(func():
+		if growth_manager.has_method("upgrade_stat") and growth_manager.upgrade_stat("magic"):
+			_update_growth_menu()
+			update_stats()
+	)
 	
-	if energy > 0:
-		# Pulsante Vita
-		b1.text = tr("growth_btn_life") % max_health
-		b1.show()
-		b1.pressed.connect(func(): 
-			if growth_manager.upgrade_stat("life"):
-				start_growth_menu(next_scene) # Ricarica il menu per aggiornare i testi
-		)
-		
-		# Pulsante Magia
-		b2.text = tr("growth_btn_magic") % max_mana
-		b2.show()
-		b2.pressed.connect(func(): 
-			if growth_manager.upgrade_stat("magic"):
-				start_growth_menu(next_scene)
-		)
-	else:
-		b1.hide()
-		b2.hide()
-	
-	# Pulsante Prosegui (sempre visibile per uscire)
+	# Pulsante 3: Continua
 	b3.text = tr("growth_btn_continue")
 	b3.show()
-	b3.pressed.connect(show_scene.bind(next_scene))
-		
+	_clear_signals(b3)
+	b3.pressed.connect(show_scene.bind(current_victory_scene))
