@@ -39,19 +39,35 @@ func add_energy(amount: int):
 
 # Tenta di spendere energia per potenziare una statistica
 # Restituisce true se l'operazione ha successo
-func upgrade_stat(stat_type: String) -> bool:
+func upgrade_stat(stat_type: String):
 	if available_energy <= 0:
-		return false
+		return
 		
 	available_energy -= 1
 	
+	var upgraded = false
 	match stat_type:
 		"life":
 			game.max_health += 1
 			game.health += 1 # Cura anche di 1 quando potenzi
+			upgraded = true
 		"magic":
 			game.max_mana += 1
 			game.mana += 1
+			upgraded = true
+		"mood":
+			game.max_mood += 1
+			game.mood += 1
+			upgraded = true
 			
-	game.update_stats()
-	return true
+	if not upgraded:
+		available_energy += 1 # Restituisce il punto se lo stat non è implementato
+		return
+
+	game.update_stats() # Aggiorna le statistiche del giocatore (HP/MP)
+
+	# Se l'energia è esaurita, procedi. Altrimenti, aggiorna il menu.
+	if available_energy <= 0:
+		game.show_scene(game.current_victory_scene)
+	else:
+		game._update_growth_menu()

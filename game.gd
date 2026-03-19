@@ -14,28 +14,32 @@ extends Control
 @onready var b3 = $UI/VBC_Main/VBC_Button/MC3/Choice3
 
 # --- QTE ---
-@onready var qte = $QTE
+@onready var qte = $Manager/QTE
 
 # --- Manager di Sistema ---
 @onready var combat_manager = $Manager/Combat as CombatManager
 @onready var dialogue_manager = $Manager/Dialogue as DialogueManager
 @onready var empathy_manager = $Manager/Empathy as EmpathyManager
-@onready var item_manager = $Manager/Item as ItemManager
+@onready var item_manager = $Manager/Item
 @onready var special_manager = $Manager/Special as SpecialManager
 @onready var growth_manager = $Manager/Growth as GrowthManager
 @onready var death_manager = $Manager/Death as DeathManager
 @onready var meteo_manager = $Manager/Meteo as MeteoManager
+@onready var rune_manager = $Manager/Rune
 
 # --- Stato del Gioco ---
 var health: int = 10
 var mana: int = 10
+var mood: int = 0
 var max_health: int = 10
 var max_mana: int = 10
+var max_mood: int = 0
 var inventory: Array[String] = []
 var current_entity_pronoun: String = ""
 var current_victory_scene: String = ""
 var current_entity_id: String = ""
 var was_in_combat: bool = false # Aggiunto per tracciare la vittoria in combattimento
+var qte_power_multiplier: float = 0.2 # Moltiplicatore per la velocità del QTE
 
 var qte_context: String = "" # Contesto per sapere perché è stato avviato il QTE
 signal target_clicked(target_type)
@@ -69,6 +73,8 @@ func _ready():
 		push_error(tr("error_node_death_not_found"))
 	if not meteo_manager:
 		push_error(tr("error_node_meteo_not_found"))
+	if not rune_manager:
+		push_error("ERRORE: Nodo RuneManager non trovato in $Manager/Rune")
 
 	# Impostazioni grafica
 	#text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
@@ -83,6 +89,16 @@ func _ready():
 	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager]:
 		if mgr:
 			mgr.game = self
+
+	# Connessione RuneManager
+	if rune_manager:
+		rune_manager.spell_cast_success.connect(_on_spell_cast_success)
+		rune_manager.combo_finished.connect(_on_rune_combo_finished)
+		
+		# Fix layout: Forza il posizionamento al centro dello schermo
+		if rune_manager is Control:
+			rune_manager.top_level = true
+			rune_manager.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 
 	# Connessione DialogueManager
 	if dialogue_manager:
@@ -116,6 +132,9 @@ func _load_story():
 			elif stat.get("type") == "magic":
 				max_mana = int(stat.get("value", 10))
 				mana = max_mana
+			elif stat.get("type") == "mood":
+				max_mood = int(stat.get("value", 0))
+				mood = max_mood
 	if player_icon and player_data.has("icon") and player_data["icon"] != "":
 		player_icon.texture = load(player_data["icon"])
 
@@ -141,6 +160,7 @@ func get_player_energy_value(type_id: String) -> int:
 	match type_id:
 		"life": return health
 		"magic": return mana
+		"mood": return mood
 	return 0
 
 func modify_player_energy(type_id: String, amount: int):
@@ -150,6 +170,8 @@ func modify_player_energy(type_id: String, amount: int):
 			if health <= 0: game_over()
 		"magic":
 			mana = clampi(mana + amount, 0, max_mana)
+		"mood":
+			mood = clampi(mood + amount, 0, max_mood)
 	update_stats()
 
 func get_health_string(amount: int) -> String:
@@ -157,6 +179,9 @@ func get_health_string(amount: int) -> String:
 
 func get_mana_string(amount: int) -> String:
 	return "💧 %d" % amount if use_visual_health else str(amount) + " MP"
+
+func get_mood_string(amount: int) -> String:
+	return "😊 %d" % amount if use_visual_health else str(amount) + " Umore"
 
 func get_damage_type_icon(type_id: String) -> String:
 	if damage_types_data.has(type_id):
@@ -174,14 +199,11 @@ func update_stats():
 		inv_str = ", ".join(inventory_names)
 
 	var entity_text = ""
-	var show_enemy = false
 	if combat_manager and combat_manager.current_entity_health > 0:
-		show_enemy = true
 		entity_text = tr("stats_enemy_hp") % get_health_string(combat_manager.current_entity_health)
 	elif dialogue_manager and dialogue_manager.is_active:
-		show_enemy = true
+		pass
 	elif current_entity_id != "" and empathy_manager and empathy_manager.is_known:
-		show_enemy = true
 		var entity = entity_data.get(current_entity_id, {})
 		var hp = 0
 		if entity.has("energy"):
@@ -190,7 +212,7 @@ func update_stats():
 					hp = int(stat.get("value", 0))
 		entity_text = tr("stats_enemy_hp") % get_health_string(hp)
 	if player_stats:
-		player_stats.text = tr("stats_player") % [get_health_string(health), get_mana_string(mana), inv_str]
+		player_stats.text = tr("stats_player") % [get_health_string(health), get_mana_string(mana), get_mood_string(mood), inv_str]
 	if enemy_stats_box and enemy_stats:
 		enemy_stats.text = entity_text
 		if enemy_icon:
@@ -234,6 +256,9 @@ func show_scene(scene_name):
 			buttons[i].hide()
 
 func handle_choice(choice):
+	# Aggiunge un feedback aptico (vibrazione) alla pressione di un pulsante di scelta.
+	Input.vibrate_handheld(50)
+
 	if choice.has("action"):
 		match choice["action"]:
 			"pickup":
@@ -257,6 +282,9 @@ func handle_choice(choice):
 				if entity_data.has(current_entity_id):
 					current_entity_pronoun = entity_data[current_entity_id].get("pronoun", "")
 				_start_prepared_dialogue()
+			"runes":
+				if rune_manager:
+					rune_manager.start_rune_casting()
 	if choice.has("next"):
 		show_scene(choice["next"])
 
@@ -282,6 +310,42 @@ func _on_dialogue_choices_requested(choices):
 		else:
 			buttons[i].hide()
 
+# --- Gestione Rune ---
+func _on_spell_cast_success(spell_id, power, cost, type):
+	# Consuma Mana
+	modify_player_energy("magic", -int(cost))
+	
+	# FIX: Se siamo in combattimento, il CombatManager gestisce l'effetto della runa (danni, resistenze, ecc.)
+	# Interrompiamo qui per evitare che Game.gd applichi danni "puri" ignorando le immunità del nemico.
+	if was_in_combat:
+		return
+	
+	var msg = ""
+	if type == "sacro":
+		# Cura il giocatore
+		modify_player_energy("life", int(power))
+		msg = tr("spell_cast_heal") % [tr(spell_id), int(power)]
+	else:
+		# Danno al nemico (se in combattimento o se c'è un'entità attiva)
+		if combat_manager and combat_manager.current_entity_health > 0:
+			combat_manager.current_entity_health -= int(power)
+			msg = tr("spell_cast_damage") % [tr(spell_id), int(power)]
+			
+			# Controllo vittoria immediata
+			if combat_manager.current_entity_health <= 0:
+				msg += " " + tr("combat_victory")
+				# Nota: Il CombatManager gestirà la transizione al prossimo click o update
+		else:
+			msg = "Incantesimo lanciato, ma nessun nemico in vista."
+
+	# Aggiorna il testo e le statistiche
+	text.text += "\n" + msg
+	update_stats()
+
+func _on_rune_combo_finished(total_spells):
+	if total_spells > 0:
+		text.text += "\n\nCombo Rune terminata! Incantesimi totali: %d" % total_spells
+
 # --- Game Over ---
 func game_over():
 	if death_manager:
@@ -290,6 +354,7 @@ func game_over():
 	enable_choices()
 	health = max_health
 	mana = max_mana
+	mood = max_mood
 	inventory.clear()
 	if combat_manager: combat_manager.current_entity_health = 0
 	if dialogue_manager: dialogue_manager.reset()
@@ -304,16 +369,37 @@ func notify_entity_death(entity_id: String):
 	if death_manager:
 		death_manager.record_entity_death(entity_id)
 
+func _trigger_haptic():
+	# Feedback tattile universale (funziona solo su mobile)
+	Input.vibrate_handheld(50)
+
 func _clear_signals(button: Button):
 	for conn in button.pressed.get_connections():
 		button.pressed.disconnect(conn.callable)
+	
+	# Riconnette il feedback aptico ogni volta che il pulsante viene pulito/preparato
+	if not button.pressed.is_connected(_trigger_haptic):
+		button.pressed.connect(_trigger_haptic)
 
 # --- QTE ---
 func start_qte_event(message_key: String = "qte_start_default", context: String = ""):
 	disable_choices()
 	text.text = tr(message_key)
 	qte_context = context
-	if qte: qte.start(b1) # Passa b1 per sovrapporre la barra al pulsante
+	
+	var speed_factor: float = 1.0
+	
+	# Calcola la velocità in base alla potenza del mostro (totale energia)
+	if current_entity_id != "" and entity_data.has(current_entity_id):
+		var entity = entity_data[current_entity_id]
+		var total_energy = 0.0
+		if entity.has("energy"):
+			for stat in entity["energy"]:
+				total_energy += stat.get("value", 0)
+		if total_energy > 0:
+			speed_factor = total_energy * qte_power_multiplier
+
+	if qte: qte.start(b1, speed_factor) # Passa b1 e la velocità calcolata
 
 func _on_qte_finished(value):
 	var result_text = tr("qte_result_miss")
@@ -389,34 +475,39 @@ func start_growth_menu(next_scene: String):
 	_update_growth_menu()
 
 func _update_growth_menu():
-	var energy = 0
-	if "available_energy" in growth_manager:
-		energy = growth_manager.available_energy
+	if not growth_manager or not "available_energy" in growth_manager:
+		return
 	
+	var energy = growth_manager.available_energy
 	text.text = tr("growth_menu_title") % energy
 	
-	# Pulsante 1: Vita
-	b1.text = tr("growth_btn_life") % max_health
-	b1.show()
-	_clear_signals(b1)
-	b1.pressed.connect(func():
-		if growth_manager.has_method("upgrade_stat") and growth_manager.upgrade_stat("life"):
-			_update_growth_menu()
-			update_stats()
-	)
+	var buttons = [b1, b2, b3]
+	for btn in buttons:
+		btn.hide()
+		_clear_signals(btn)
+
+	var player_energy_types = story_data.get("player", {}).get("energy", [])
+	var energy_type_definitions = story_data.get("energy_types", {})
 	
-	# Pulsante 2: Magia
-	b2.text = tr("growth_btn_magic") % max_mana
-	b2.show()
-	_clear_signals(b2)
-	b2.pressed.connect(func():
-		if growth_manager.has_method("upgrade_stat") and growth_manager.upgrade_stat("magic"):
-			_update_growth_menu()
-			update_stats()
-	)
-	
-	# Pulsante 3: Continua
-	b3.text = tr("growth_btn_continue")
-	b3.show()
-	_clear_signals(b3)
-	b3.pressed.connect(show_scene.bind(current_victory_scene))
+	var button_index = 0
+	for energy_stat in player_energy_types:
+		if button_index >= buttons.size():
+			break # Mostra al massimo 3 opzioni
+
+		var stat_id = energy_stat.get("type")
+
+		var stat_name_key = energy_type_definitions.get(stat_id, {}).get("name", stat_id)
+		var stat_name = tr(stat_name_key)
+		var current_value = 0
+		match stat_id:
+			"life": current_value = max_health
+			"magic": current_value = max_mana
+			"mood": current_value = max_mood
+			_: continue # Salta le statistiche non potenziabili (se ce ne fossero)
+		
+		var btn = buttons[button_index]
+		btn.text = tr("growth_btn_stat") % [stat_name, current_value]
+		btn.show()
+		btn.pressed.connect(growth_manager.upgrade_stat.bind(stat_id))
+		
+		button_index += 1

@@ -121,14 +121,22 @@ func show_combat_buttons():
 	game.b2.pressed.connect(open_special_menu)
 
 	# -----------------------------------------------------
-	# PULSANTE 3 : FUGA
+	# PULSANTE 3 : FUGA O RUNE
 	# -----------------------------------------------------
 
-	game.b3.text = game.tr("combat_choice_flee")
-	game.b3.show()
+	# Flag interno per decidere quale meccanica visualizzare (come richiesto)
+	var use_runes_system = true
 
-	game._clear_signals(game.b3)
-	game.b3.pressed.connect(flee_combat, CONNECT_ONE_SHOT)
+	if use_runes_system:
+		game.b3.text = game.tr("combat_choice_runes")
+		game.b3.show()
+		game._clear_signals(game.b3)
+		game.b3.pressed.connect(start_rune_combat, CONNECT_ONE_SHOT)
+	else:
+		game.b3.text = game.tr("combat_choice_flee")
+		game.b3.show()
+		game._clear_signals(game.b3)
+		game.b3.pressed.connect(flee_combat, CONNECT_ONE_SHOT)
 
 
 # =========================================================
@@ -294,6 +302,77 @@ func use_item_turn(item_id):
 
 
 # =========================================================
+# SISTEMA RUNE
+# =========================================================
+
+func start_rune_combat():
+	# Verifica che il RuneManager esista nel Game
+	if "rune_manager" in game and game.rune_manager:
+		# Connettiamo i segnali del RuneManager alle funzioni locali di gestione danni
+		if not game.rune_manager.spell_cast_success.is_connected(_on_rune_spell_success):
+			game.rune_manager.spell_cast_success.connect(_on_rune_spell_success)
+		if not game.rune_manager.combo_finished.is_connected(_on_rune_sequence_finished):
+			game.rune_manager.combo_finished.connect(_on_rune_sequence_finished)
+			
+		game.rune_manager.start_rune_casting()
+	else:
+		push_error("RuneManager non trovato! Impossibile avviare la sequenza rune.")
+		# Fallback: passa il turno se qualcosa va storto
+		entity_turn()
+
+func _on_rune_spell_success(spell_id, power, cost, type):
+	
+	# Se il nemico è già sconfitto (es. ucciso dalla runa precedente nella combo), 
+	# interrompiamo l'elaborazione per evitare log confusi su nemici già morti.
+	if current_entity_health <= 0:
+		return
+
+	# Applica il danno calcolato dalla runa
+	var damage = int(power)
+	var msg_extra = ""
+	
+	# Calcolo resistenze/debolezze
+	var entity_def = game.entity_data.get(current_entity_id, {})
+	
+	# Verifica robusta che siano Array
+	var weaknesses = entity_def.get("weaknesses", [])
+	if not weaknesses is Array: weaknesses = []
+	var immunities = entity_def.get("immunities", [])
+	if not immunities is Array: immunities = []
+	var affinities = entity_def.get("affinity", [])
+	if not affinities is Array: affinities = []
+
+	if type in affinities:
+		damage *= -1 # Affinità cura il nemico
+		msg_extra = game.tr("combat_damage_affinity") % type
+	elif type in immunities:
+		damage = 0
+		msg_extra = game.tr("combat_damage_immunity") % type
+	elif type in weaknesses:
+		damage *= 2
+		msg_extra = game.tr("combat_damage_weakness")
+
+	var hp_before = current_entity_health
+	current_entity_health -= damage
+	
+	# Manteniamo i PV a 0 come minimo per pulizia dei log
+	if current_entity_health < 0:
+		current_entity_health = 0
+
+	print("[COMBAT LOG] Rune Spell (%s) -> %s | Type: %s | DMG: %d | HP: %d -> %d" % [spell_id, current_entity_id, type, damage, hp_before, current_entity_health])
+	
+	# Feedback immediato per ogni magia della combo
+	game.text.text = game.tr("spell_cast_damage") % [spell_id, abs(damage)] + msg_extra
+	game.update_stats()
+
+func _on_rune_sequence_finished(_total_spells):
+	# Alla fine della combo, controlliamo se abbiamo vinto o se tocca al nemico
+	if await _check_victory():
+		return
+	
+	entity_turn()
+
+# =========================================================
 # ATTACCO DEL GIOCATORE
 # =========================================================
 
@@ -341,7 +420,9 @@ func resolve_player_attack(qte_multiplier: float):
 			multiplier_msg = game.tr("combat_damage_weakness")
 
 	# Applichiamo il danno (che potrebbe essere stato azzerato o raddoppiato)
+	var hp_before = current_entity_health
 	current_entity_health -= total_damage
+	print("[COMBAT LOG] Player Attack -> %s | Type: %s | DMG: %d | HP: %d -> %d" % [current_entity_id, damage_type, total_damage, hp_before, current_entity_health])
 
 	# Il testo del risultato del QTE (es. "PERFECT!") è già stato mostrato da Game.gd.
 	# Aggiungiamo una nuova riga con i dettagli del danno.
@@ -431,7 +512,9 @@ func entity_turn():
 
 	var damage = randi_range(1, max_damage)
 
+	var hp_before = game.health
 	game.health -= damage
+	print("[COMBAT LOG] Enemy Attack (%s) -> Player | Type: %s | DMG: %d | HP: %d -> %d" % [current_entity_id, attack_type, damage, hp_before, game.health])
 
 	game.update_stats()
 

@@ -177,8 +177,9 @@
 					"victory_scene": "dragon_victory"
 				},
 				{
-					"text": "Scappa",
-					"next": "start"
+					"text": "Usa la magia!",
+					"action": "runes",
+					"next": "cave_1" 
 				},
 				{
 					"text": "Esamina",
@@ -216,7 +217,7 @@
 					"text": "Prendi l'ascia",
 					"action": "pickup",
 					"item_id": "ascia",
-					"next": "forest_0"
+					"next": "forest_1"
 				},
 				{
 					"text": "Prosegui",

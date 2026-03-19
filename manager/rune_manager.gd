@@ -1,0 +1,202 @@
+extends Control
+
+# Segnali verso il sistema di gioco/combattimento
+signal spell_cast_success(spell_id, final_power, cost, type)
+signal spell_cast_failed(reason)
+signal combo_finished(total_spells)
+
+# Configurazione Gameplay
+const MAX_COMBO_CHAIN = 7
+const PERFECT_TIME_THRESHOLD_MS = 2500 # Sotto i 2.5s è "Perfetto" -> Combo
+const MAX_TIME_FOR_MULTIPLIER_MS = 5000 # Sopra i 5s il moltiplicatore è 1.0x
+# const COST_SCALING_FACTOR = 1.5 # Il costo aumenta del 50% per ogni spell nella catena
+const COST_SCALING_FACTOR = 0.75 # Il costo diminuisce del 25% per ogni spell nella catena
+
+# Variabili di Stato
+var rune_data = {}
+var current_sequence = []
+var current_icons = []
+var start_time_ms = 0
+var current_combo_index = 0
+var is_active = false
+
+# Riferimenti UI (Assicurati che i nomi dei nodi nella scena corrispondano)
+@onready var feedback_label = $Panel/CenterContainer/VBoxContainer/FeedbackLabel
+@onready var rune_display_label = $Panel/CenterContainer/VBoxContainer/RuneDisplayLabel
+@onready var grid_container = $Panel/CenterContainer/VBoxContainer/RuneGrid
+
+
+func _ready():
+	_load_rune_data()
+	hide()
+	# Configurazione font:
+	# 1. FeedbackLabel: Messaggi di gioco (dimensione normale per leggere il testo)
+	feedback_label.add_theme_font_size_override("font_size", 24)
+	# Abilita il ritorno a capo intelligente e imposta un'altezza minima per nomi lunghi
+	feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	feedback_label.custom_minimum_size.y = 80
+	feedback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER # Centra anche il testo descrittivo
+
+	# 2. RuneDisplayLabel: Simboli delle rune (dimensione grande per vedere le icone)
+	rune_display_label.add_theme_font_size_override("font_size", 50)
+	# Centra le rune visualizzate orizzontalmente
+	rune_display_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+func _load_rune_data():
+	var file = FileAccess.open("res://runes.json", FileAccess.READ)
+	if file:
+		var json = JSON.new()
+		var error = json.parse(file.get_as_text())
+		if error == OK:
+			rune_data = json.data
+		else:
+			push_error("RuneManager: Errore parsing runes.json")
+	else:
+		push_error("RuneManager: File runes.json non trovato!")
+
+# Metodo pubblico per avviare il manager
+func start_rune_casting():
+	# Soluzione pulita per il posizionamento:
+	# 1. Rendi il pannello "top_level" per sganciarlo dal layout del genitore.
+	#    Questo fa sì che si posizioni rispetto all'intera finestra di gioco.
+	top_level = true
+	# 2. Applica il preset per centrarlo (ancore e offset) ogni volta che viene aperto.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	# 3. Assicuriamoci che anche i contenitori interni si espandano per riempire lo schermo.
+	#    Se il Panel o il CenterContainer rimangono piccoli in alto a sinistra, la griglia non sarà centrata.
+	$Panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	$Panel/CenterContainer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	show()
+	is_active = true
+	current_combo_index = 0
+	_prepare_round(tr("rune_prompt_start"))
+
+func _prepare_round(prompt_text: String) -> void:
+	current_sequence.clear()
+	current_icons.clear()
+	start_time_ms = 0 # Il timer partirà al primo click
+	feedback_label.text = prompt_text
+	rune_display_label.text = "" # Pulisce la visualizzazione delle rune
+	
+	# Nascondiamo temporaneamente la griglia per evitare che il layout si "restringa"
+	# visibilmente mentre la svuotiamo e la riempiamo di nuovo.
+	grid_container.hide()
+	
+	# Pulisci griglia precedente
+	for child in grid_container.get_children():
+		child.queue_free()
+	
+	# queue_free() elimina i nodi alla fine del frame. Attendiamo il frame successivo
+	# per essere sicuri che la griglia sia vuota prima di aggiungere nuovi elementi.
+	await get_tree().process_frame
+	
+	# Mischia le rune (Logica: ordine diverso ad ogni apertura/round)
+	var deck = rune_data.get("runes", []).duplicate()
+	deck.shuffle()
+	
+	# Genera pulsanti
+	for rune in deck:
+		var btn := Button.new()
+		btn.text = rune.get("icon", "?")
+		btn.custom_minimum_size = Vector2(90, 90)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
+		btn.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
+		btn.tooltip_text = rune["name"]
+		btn.add_theme_font_size_override("font_size", 48)
+		# Connettiamo l'evento passando l'ID della runa e il riferimento al bottone
+		btn.pressed.connect(_on_rune_pressed.bind(rune.get("id", "unknown_rune"), btn))
+		grid_container.add_child(btn)
+
+	# Ora che la griglia è di nuovo piena, la rendiamo di nuovo visibile.
+	grid_container.show()
+
+func _on_rune_pressed(rune_id: String, btn_ref: Button):
+	# Aggiunge un feedback aptico (vibrazione) al tocco.
+	Input.vibrate_handheld(50) # 50 millisecondi è una vibrazione breve e netta.
+
+	if not is_active: return
+	
+	# Specifica: "clicca in sequenza tre rune diverse"
+	if rune_id in current_sequence:
+		feedback_label.text = tr("rune_error_duplicate")
+		return
+
+	# Avvia timer al primo tocco della sequenza attuale
+	if current_sequence.size() == 0:
+		start_time_ms = Time.get_ticks_msec()
+
+	current_sequence.append(rune_id)
+	current_icons.append(btn_ref.text)
+	btn_ref.disabled = true # Feedback visivo: runa usata
+	
+	# Aggiorna SOLO la label delle rune (quella con il font grande)
+	rune_display_label.text = " ᛫ ".join(current_icons)
+
+	# Controllo fine sequenza
+	if current_sequence.size() == 3:
+		_evaluate_spell_attempt()
+
+func _evaluate_spell_attempt():
+	var end_time = Time.get_ticks_msec()
+	var time_taken = end_time - start_time_ms
+	
+	var found_spell = null
+	var spells_list = rune_data.get("spells", [])
+	
+	for spell in spells_list:
+		# L'ordine è importante: array devono essere identici
+		if spell["sequence"] == current_sequence:
+			found_spell = spell
+			break
+	
+	if found_spell:
+		_process_success(found_spell, time_taken)
+	else:
+		# Fallimento
+		feedback_label.text = tr("rune_fizzle")
+		await get_tree().create_timer(1.0).timeout
+		_end_session()
+
+func _process_success(spell, time_taken_ms):
+	# 1. Calcolo Moltiplicatore Velocità
+	# Più veloce = più potenza.
+	var speed_mult = 1.0
+	if time_taken_ms < MAX_TIME_FOR_MULTIPLIER_MS:
+		# Formula lineare inversa: 0ms -> 2.0x, 5000ms -> 1.0x (esempio)
+		var factor = 1.0 - (float(time_taken_ms) / float(MAX_TIME_FOR_MULTIPLIER_MS))
+		speed_mult = 1.0 + factor 
+	
+	# 2. Calcolo Costo Scalare per Combo
+	var scaled_cost = spell["cost"] * pow(COST_SCALING_FACTOR, current_combo_index)
+	
+	# Emetti segnale per applicare effetti
+	spell_cast_success.emit(spell["id"], spell["base_power"] * speed_mult, scaled_cost, spell["type"])
+	
+	# 3. Gestione Combo / Concatenazione
+	# Se l'esecuzione è "perfetta" (tempo minimo) e non abbiamo raggiunto il limite
+	if time_taken_ms <= PERFECT_TIME_THRESHOLD_MS and current_combo_index < MAX_COMBO_CHAIN:
+		current_combo_index += 1
+		feedback_label.text = tr("rune_perfect_chain") + " (x%d)" % current_combo_index
+		
+		# Breve pausa per mostrare il feedback positivo
+		await get_tree().create_timer(0.6).timeout
+		
+		# Riavvia il round con rune rimescolate
+		await _prepare_round(tr("rune_prompt_start"))
+	else:
+		feedback_label.text = "Hai lanciato " + tr(spell.get("name", "spell_unknown"))
+		await get_tree().create_timer(1.0).timeout
+		_end_session()
+
+func _end_session():
+	is_active = false
+	hide()
+	combo_finished.emit(current_combo_index)
+
+# Debug veloce
+func _input(event):
+	if OS.is_debug_build() and event.is_action_pressed("ui_focus_next"):
+		if not is_active:
+			start_rune_casting()

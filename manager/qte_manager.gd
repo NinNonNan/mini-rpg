@@ -4,10 +4,14 @@ extends Control
 signal qte_finished(value)
 
 @onready var bar = ColorRect.new()
-@onready var cursor = Panel.new()
+@onready var cursor = TextureRect.new()
+
+# Assicurati di avere un file SVG/PNG a questo percorso, o aggiornalo!
+var cursor_texture_path = "res://art/cursor.svg"
 
 var active = false
-var speed = 500.0
+var base_speed = 500.0
+var current_speed = 500.0
 var direction = 1
 var time: float = 0.0
 
@@ -20,23 +24,24 @@ func _ready():
 	bar.gui_input.connect(_on_bar_gui_input)
 	add_child(bar)
 
-	# Imposta il cursore con bordo e sfondo trasparente
-	var stylebox = StyleBoxFlat.new()
-	stylebox.bg_color = Color(0, 0, 0, 0) # Sfondo trasparente
-	stylebox.border_width_top = 2
-	stylebox.border_width_bottom = 2
-	stylebox.border_width_left = 2
-	stylebox.border_width_right = 2
-	stylebox.border_color = Color(0.1, 0.1, 0.1, 1) # Colore bordo quasi nero
-	cursor.add_theme_stylebox_override("panel", stylebox)
-	cursor.size = Vector2(10, bar.size.y)
-	cursor.position = Vector2(bar.position.x, bar.position.y)
+	# Imposta l'immagine del cursore
+	if ResourceLoader.exists(cursor_texture_path):
+		cursor.texture = load(cursor_texture_path)
+	
+	cursor.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	cursor.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	
+	var dim = bar.size.y * 1.3 # 30% più grande della barra
+	cursor.size = Vector2(dim, dim)
+	# Centra verticalmente: (AltezzaBarra - AltezzaCursore) / 2
+	cursor.position = Vector2(bar.position.x, bar.position.y + (bar.size.y - dim) / 2.0)
 	cursor.mouse_filter = Control.MOUSE_FILTER_IGNORE # Il cursore non deve bloccare il click sulla barra
 	add_child(cursor)
 
 	hide() # QTE nascosto di default
 
-func start(target_control: Control = null):
+func start(target_control: Control = null, speed_factor: float = 1.0):
+	current_speed = base_speed * speed_factor
 	if target_control:
 		# Sgancia il QTE da eventuali layout automatici o ancore del genitore
 		set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -51,8 +56,10 @@ func start(target_control: Control = null):
 		# Adatta la barra e il cursore alle nuove dimensioni
 		bar.position = Vector2.ZERO
 		bar.size = size
-		cursor.size.y = size.y
-		cursor.position.y = 0
+		
+		var dim = size.y * 1.3 # Mantiene la proporzione del 30% più grande
+		cursor.size = Vector2(dim, dim)
+		cursor.position.y = (size.y - dim) / 2.0
 	else:
 		z_index = 0 # Ripristina lo z-index normale se non c'è un target specifico
 
@@ -75,7 +82,7 @@ func _process(delta):
 	var center_x = bar.position.x + amplitude
 	
 	# Calcola la velocità angolare affinché la velocità massima (al centro) sia pari a 'speed'
-	var angular_speed = speed / amplitude if amplitude > 0 else 0.0
+	var angular_speed = current_speed / amplitude if amplitude > 0 else 0.0
 	
 	time += delta * angular_speed
 	cursor.position.x = center_x + amplitude * sin(time)

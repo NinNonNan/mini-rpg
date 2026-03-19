@@ -1,20 +1,24 @@
 [gd_scene format=3 uid="uid://dde07eotaqjpb"]
 
 [ext_resource type="Script" uid="uid://d1qiyot78sli2" path="res://game.gd" id="1_80nbo"]
-[ext_resource type="Script" uid="uid://ivg5beicys7p" path="res://dialogue_manager.gd" id="2_feb5d"]
+[ext_resource type="Script" uid="uid://ivg5beicys7p" path="res://manager/dialogue_manager.gd" id="2_feb5d"]
 [ext_resource type="FontFile" uid="uid://bjxpha2a8bpoo" path="res://fonts/freecam v2.ttf" id="2_hve3p"]
-[ext_resource type="Script" uid="uid://cfht24jt8567h" path="res://combat_manager.gd" id="3_fc0e3"]
-[ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://empathy_manager.gd" id="4_fc0e3"]
-[ext_resource type="Script" uid="uid://bgde6rbxnopxg" path="res://item_manager.gd" id="5_7jktm"]
-[ext_resource type="Script" uid="uid://c0f4lcycq4hn1" path="res://special_manager.gd" id="6_ryrav"]
-[ext_resource type="Script" uid="uid://686s31eqltii" path="res://growth_manager.gd" id="7_eow3j"]
-[ext_resource type="Script" uid="uid://cjtaam8uwmljd" path="res://quick_time_combat.gd" id="8_j5wjh"]
-[ext_resource type="Script" uid="uid://hgu7c8wn2yv0" path="res://death_manager.gd" id="8_vef74"]
-[ext_resource type="Script" uid="uid://bdhqckafmw8k5" path="res://meteo_manager.gd" id="11_mfdv2"]
+[ext_resource type="Script" uid="uid://cfht24jt8567h" path="res://manager/combat_manager.gd" id="3_fc0e3"]
+[ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://manager/empathy_manager.gd" id="4_fc0e3"]
+[ext_resource type="Script" uid="uid://bgde6rbxnopxg" path="res://manager/item_manager.gd" id="5_7jktm"]
+[ext_resource type="Script" uid="uid://c0f4lcycq4hn1" path="res://manager/special_manager.gd" id="6_ryrav"]
+[ext_resource type="Script" uid="uid://686s31eqltii" path="res://manager/growth_manager.gd" id="7_eow3j"]
+[ext_resource type="Script" uid="uid://hgu7c8wn2yv0" path="res://manager/death_manager.gd" id="8_vef74"]
+[ext_resource type="Script" uid="uid://cql0pomvglwoj" path="res://manager/qte_manager.gd" id="11_iotsf"]
+[ext_resource type="Script" uid="uid://bdhqckafmw8k5" path="res://manager/meteo_manager.gd" id="11_mfdv2"]
+[ext_resource type="Script" uid="uid://b04gpwp1lwtq4" path="res://manager/rune_manager.gd" id="12_iotsf"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
 
 [sub_resource type="Theme" id="Theme_feb5d"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_iotsf"]
+bg_color = Color(0, 0, 0, 0.784314)
 
 [node name="Game" type="Control" unique_id=1206785521]
 layout_mode = 3
@@ -77,7 +81,9 @@ stretch_mode = 3
 [node name="StatsText" type="Label" parent="UI/VBC_Main/MC_Enemy/PC/HBC" unique_id=1813174247]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
 theme_override_font_sizes/font_size = 20
+vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="MC_Story" type="MarginContainer" parent="UI/VBC_Main" unique_id=2088841522]
@@ -126,7 +132,6 @@ custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 theme_override_fonts/font = ExtResource("2_hve3p")
 theme_override_font_sizes/font_size = 20
-horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
 
@@ -174,30 +179,6 @@ layout_mode = 2
 theme_override_fonts/font = ExtResource("2_hve3p")
 theme_override_font_sizes/font_size = 20
 
-[node name="QTE" type="Control" parent="." unique_id=1306013137]
-custom_minimum_size = Vector2(400, 50)
-anchors_preset = 0
-offset_left = 439.0
-offset_top = 455.0
-offset_right = 839.0
-offset_bottom = 505.0
-script = ExtResource("8_j5wjh")
-
-[node name="Cursor" type="ColorRect" parent="QTE" unique_id=955510604]
-layout_mode = 0
-offset_right = 40.0
-offset_bottom = 40.0
-color = Color(1, 1, 1, 0)
-
-[node name="TextureProgressBar" type="TextureProgressBar" parent="QTE" unique_id=378922564]
-custom_minimum_size = Vector2(400, 50)
-layout_mode = 0
-offset_right = 40.0
-offset_bottom = 40.0
-tint_under = Color(1, 0.1254902, 1, 1)
-tint_over = Color(1, 0.05490196, 1, 1)
-tint_progress = Color(1, 0.03137255, 1, 1)
-
 [node name="Manager" type="Node" parent="." unique_id=38976104]
 
 [node name="Dialogue" type="Node" parent="Manager" unique_id=1889850160]
@@ -214,9 +195,6 @@ script = ExtResource("4_fc0e3")
 [node name="Item" type="Node" parent="Manager" unique_id=1541526958]
 script = ExtResource("5_7jktm")
 
-[node name="Special" type="Node" parent="Manager" unique_id=1536375209]
-script = ExtResource("6_ryrav")
-
 [node name="Growth" type="Node" parent="Manager" unique_id=312432868]
 script = ExtResource("7_eow3j")
 
@@ -225,3 +203,71 @@ script = ExtResource("8_vef74")
 
 [node name="Meteo" type="Node" parent="Manager" unique_id=146860750]
 script = ExtResource("11_mfdv2")
+
+[node name="Special" type="Node" parent="Manager" unique_id=1536375209]
+script = ExtResource("6_ryrav")
+
+[node name="QTE" type="Control" parent="Manager" unique_id=1306013137]
+custom_minimum_size = Vector2(400, 50)
+layout_mode = 3
+anchors_preset = 0
+offset_left = 439.0
+offset_top = 455.0
+offset_right = 839.0
+offset_bottom = 505.0
+script = ExtResource("11_iotsf")
+
+[node name="Cursor" type="TextureRect" parent="Manager/QTE" unique_id=1942866276]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="TextureProgressBar" type="TextureProgressBar" parent="Manager/QTE" unique_id=378922564]
+custom_minimum_size = Vector2(400, 50)
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+tint_under = Color(1, 0.1254902, 1, 1)
+tint_over = Color(1, 0.05490196, 1, 1)
+tint_progress = Color(1, 0.03137255, 1, 1)
+
+[node name="Rune" type="Control" parent="Manager" unique_id=519650839]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("12_iotsf")
+
+[node name="Panel" type="Panel" parent="Manager/Rune" unique_id=999702461]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_iotsf")
+
+[node name="CenterContainer" type="CenterContainer" parent="Manager/Rune/Panel" unique_id=1181262137]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Manager/Rune/Panel/CenterContainer" unique_id=1787223947]
+layout_mode = 2
+
+[node name="RuneDisplayLabel" type="Label" parent="Manager/Rune/Panel/CenterContainer/VBoxContainer" unique_id=1217592077]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
+
+[node name="FeedbackLabel" type="Label" parent="Manager/Rune/Panel/CenterContainer/VBoxContainer" unique_id=887585484]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_hve3p")
+theme_override_font_sizes/font_size = 20
+
+[node name="RuneGrid" type="GridContainer" parent="Manager/Rune/Panel/CenterContainer/VBoxContainer" unique_id=703575075]
+layout_mode = 2
+columns = 6

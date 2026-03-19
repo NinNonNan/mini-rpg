@@ -1,0 +1,54 @@
+{
+	"runes": [
+		{"id": "fehu", "icon": "ᚠ", "name": "Fehu"},
+		{"id": "uruz", "icon": "ᚢ", "name": "Uruz"},
+		{"id": "thurisaz", "icon": "ᚦ", "name": "Thurisaz"},
+		{"id": "ansuz", "icon": "ᚨ", "name": "Ansuz"},
+		{"id": "raido", "icon": "ᚱ", "name": "Raido"},
+		{"id": "kaunan", "icon": "ᚲ", "name": "Kaunan"},
+		{"id": "gebo", "icon": "ᚷ", "name": "Gebo"},
+		{"id": "wunjo", "icon": "ᚹ", "name": "Wunjo"},
+		{"id": "hagalaz", "icon": "ᚺ", "name": "Hagalaz"},
+		{"id": "naudiz", "icon": "ᚾ", "name": "Naudiz"},
+		{"id": "isaz", "icon": "ᛁ", "name": "Isaz"},
+		{"id": "jera", "icon": "ᛃ", "name": "Jera"},
+		{"id": "eihwaz", "icon": "ᛇ", "name": "Eihwaz"},
+		{"id": "perthro", "icon": "ᛈ", "name": "Perthro"},
+		{"id": "algiz", "icon": "ᛉ", "name": "Algiz"},
+		{"id": "sowilo", "icon": "ᛊ", "name": "Sowilo"},
+		{"id": "tiwaz", "icon": "ᛏ", "name": "Tiwaz"},
+		{"id": "berkanan", "icon": "ᛒ", "name": "Berkanan"},
+		{"id": "ehwaz", "icon": "ᛖ", "name": "Ehwaz"},
+		{"id": "mannaz", "icon": "ᛗ", "name": "Mannaz"},
+		{"id": "laguz", "icon": "ᛚ", "name": "Laguz"},
+		{"id": "ingwaz", "icon": "ᛜ", "name": "Ingwaz"},
+		{"id": "dagaz", "icon": "ᛞ", "name": "Dagaz"},
+		{"id": "othala", "icon": "ᛟ", "name": "Othala"}
+	],
+	"spells": [
+		{
+			"id": "rune_fireball",
+			"name": "rune_fireball",
+			"sequence": ["fehu", "kaunan", "sowilo"],
+			"base_power": 10,
+			"cost": 5,
+			"type": "fuoco"
+		},
+		{
+			"id": "spell_heal",
+			"name": "spell_heal",
+			"sequence": ["uruz", "berkanan", "laguz"],
+			"base_power": 8,
+			"cost": 4,
+			"type": "sacro"
+		},
+		{
+			"id": "spell_thunder",
+			"name": "spell_thunder",
+			"sequence": ["thurisaz", "algiz", "hagalaz"],
+			"base_power": 12,
+			"cost": 6,
+			"type": "storm"
+		}
+	]
+}
