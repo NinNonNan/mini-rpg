@@ -50,6 +50,9 @@ var current_victory_scene = ""
 # Variabile temporanea per la magia selezionata in attesa di bersaglio
 var pending_spell_id: String = ""
 
+# Variabile temporanea per i dati della combo runica in attesa di bersaglio
+var pending_rune_data: Dictionary = {}
+
 
 # =========================================================
 # INIZIO COMBATTIMENTO
@@ -308,9 +311,11 @@ func use_item_turn(item_id):
 func start_rune_combat():
 	# Verifica che il RuneManager esista nel Game
 	if "rune_manager" in game and game.rune_manager:
-		# Connettiamo i segnali del RuneManager alle funzioni locali di gestione danni
-		if not game.rune_manager.spell_cast_success.is_connected(_on_rune_spell_success):
-			game.rune_manager.spell_cast_success.connect(_on_rune_spell_success)
+		# Connettiamo il segnale per la richiesta bersaglio (NUOVO)
+		if not game.rune_manager.request_target_selection.is_connected(_on_rune_target_requested):
+			game.rune_manager.request_target_selection.connect(_on_rune_target_requested)
+		
+		# Connettiamo il segnale di fine combo (per gestire fallimenti/fizzle)
 		if not game.rune_manager.combo_finished.is_connected(_on_rune_sequence_finished):
 			game.rune_manager.combo_finished.connect(_on_rune_sequence_finished)
 			
@@ -320,30 +325,84 @@ func start_rune_combat():
 		# Fallback: passa il turno se qualcosa va storto
 		entity_turn()
 
-func _on_rune_spell_success(spell_id, power, cost, type):
+func _on_rune_target_requested(spell_data):
+	pending_rune_data = spell_data
 	
-	# Se il nemico è già sconfitto (es. ucciso dalla runa precedente nella combo), 
-	# interrompiamo l'elaborazione per evitare log confusi su nemici già morti.
-	if current_entity_health <= 0:
-		return
+	# Configura la UI per la selezione bersaglio
+	game.text.text = game.tr("combat_select_target")
+	
+	# Nasconde i pulsanti di combattimento
+	game.b1.hide()
+	game.b2.hide()
+	
+	# Pulsante Indietro (Annulla selezione ma perde il turno/runa)
+	game.b3.text = game.tr("combat_back")
+	game.b3.show()
+	game._clear_signals(game.b3)
+	game.b3.pressed.connect(cancel_rune_selection)
+	
+	# Attiva le icone cliccabili sui bersagli
+	game.enable_target_selection()
+	game.target_clicked.connect(_on_rune_target_chosen, CONNECT_ONE_SHOT)
 
-	# Applica il danno calcolato dalla runa
-	var damage = int(power)
+func cancel_rune_selection():
+	game.disable_target_selection()
+	if game.target_clicked.is_connected(_on_rune_target_chosen):
+		game.target_clicked.disconnect(_on_rune_target_chosen)
+	# Se annulli dopo aver castato le rune, torni al menu principale ma hai perso l'occasione di lanciare.
+	show_combat_buttons()
+
+func _on_rune_target_chosen(target_type):
+	game.disable_target_selection()
+	
+	var target_id = ""
+	if target_type == "player": target_id = "player"
+	elif target_type == "enemy": target_id = current_entity_id
+	elif target_type == "back":
+		cancel_rune_selection()
+		return
+	
+	if target_id != "":
+		_execute_rune_combo(target_id)
+
+func _execute_rune_combo(target_id):
+	var data = pending_rune_data
+	var power = int(data.get("power", 0))
+	var cost = int(data.get("cost", 0))
+	var type = data.get("type", "neutral")
+	var spell_name = data.get("name", "Combo Runica")
+
+	# Consuma Mana
+	game.modify_player_energy("magic", -cost)
+	
+	# Recupera dati del bersaglio per resistenze/affinità
+	var affinities = []
+	var immunities = []
+	var weaknesses = []
+	
+	if target_id == "player":
+		var p_data = game.story_data.get("player", {})
+		affinities = p_data.get("affinity", [])
+		weaknesses = p_data.get("weaknesses", [])
+		immunities = p_data.get("immunities", [])
+	else:
+		var e_data = game.entity_data.get(current_entity_id, {})
+		affinities = e_data.get("affinity", [])
+		weaknesses = e_data.get("weaknesses", [])
+		immunities = e_data.get("immunities", [])
+
+	var damage = power
+	var msg = ""
 	var msg_extra = ""
 	
-	# Calcolo resistenze/debolezze
-	var entity_def = game.entity_data.get(current_entity_id, {})
-	
-	# Verifica robusta che siano Array
-	var weaknesses = entity_def.get("weaknesses", [])
-	if not weaknesses is Array: weaknesses = []
-	var immunities = entity_def.get("immunities", [])
-	if not immunities is Array: immunities = []
-	var affinities = entity_def.get("affinity", [])
-	if not affinities is Array: affinities = []
-
+	# ========================================================================================
+	# SISTEMA DI CURA BASATO SU AFFINITÀ (IMPORTANTE: NON MODIFICARE)
+	# Non esiste un tipo "Cura" dedicato. La cura avviene quando il bersaglio viene colpito
+	# da un tipo di energia per cui possiede un'affinità.
+	# Se type è in affinities -> Il danno diventa negativo (ovvero cura).
+	# ========================================================================================
 	if type in affinities:
-		damage *= -1 # Affinità cura il nemico
+		damage *= -1 # Affinità inverte il danno (Cura)
 		msg_extra = game.tr("combat_damage_affinity") % type
 	elif type in immunities:
 		damage = 0
@@ -351,25 +410,48 @@ func _on_rune_spell_success(spell_id, power, cost, type):
 	elif type in weaknesses:
 		damage *= 2
 		msg_extra = game.tr("combat_damage_weakness")
-
-	var hp_before = current_entity_health
-	current_entity_health -= damage
 	
-	# Manteniamo i PV a 0 come minimo per pulizia dei log
-	if current_entity_health < 0:
-		current_entity_health = 0
+	# Applica Danno/Cura
+	if target_id == "player":
+		# Controlliamo se questo danno sarà letale PRIMA di applicarlo.
+		# Se il giocatore muore, modify_player_energy resetta le variabili globali (Game Over),
+		# quindi dobbiamo interrompere l'esecuzione qui per non attivare erroneamente la vittoria.
+		var is_lethal = damage > 0 and (game.health - damage) <= 0
 
-	print("[COMBAT LOG] Rune Spell (%s) -> %s | Type: %s | DMG: %d | HP: %d -> %d" % [spell_id, current_entity_id, type, damage, hp_before, current_entity_health])
+		# modify_player_energy: +amount = cura, -amount = danno
+		# Se 'damage' è negativo (cura), -damage diventa positivo.
+		game.modify_player_energy("life", -damage)
+		
+		if is_lethal:
+			return
+
+		if damage < 0:
+			msg = game.tr("spell_cast_heal") % [spell_name, abs(damage)]
+		else:
+			msg = "Ti sei colpito con %s per %d danni!" % [spell_name, damage] + msg_extra
 	
-	# Feedback immediato per ogni magia della combo
-	game.text.text = game.tr("spell_cast_damage") % [spell_id, abs(damage)] + msg_extra
+	elif target_id == current_entity_id:
+		current_entity_health -= damage
+		if current_entity_health < 0: current_entity_health = 0
+		
+		if damage < 0:
+			msg = "Il nemico assorbe %s e si cura!" % type
+		else:
+			msg = game.tr("spell_cast_damage") % [spell_name, damage] + msg_extra
+
+	game.text.text = msg
 	game.update_stats()
 
-func _on_rune_sequence_finished(_total_spells):
-	# Alla fine della combo, controlliamo se abbiamo vinto o se tocca al nemico
+	await get_tree().create_timer(1.5).timeout
+
 	if await _check_victory():
 		return
 	
+	entity_turn()
+
+func _on_rune_sequence_finished(_total_spells):
+	# Viene chiamato solo se la combo fallisce (0 spells)
+	# Passa il turno al nemico (punizione per il fallimento)
 	entity_turn()
 
 # =========================================================

@@ -14,13 +14,18 @@
 		"mood": { "name": "energy_mood", "icon": "😊" }
 	},
 	"damage_types": {
-		"taglio": {"name": "Taglio","icon": "🗡️"},
-		"fuoco": {"name": "Fuoco","icon": "🔥"},
-		"morso": {"name": "Morso","icon": "🦷"},
-		"sole": {"name": "Sole","icon": "☀️"},
-		"sacro": {"name": "Sacro","icon": "✨"},
-		"graffio": {"name": "Graffio","icon": "🐾"},
-		"artiglio": {"name": "Artiglio","icon": "🐾"}
+		"taglio": {"name": "Taglio", "icon": "🗡️"},
+		"fuoco": {"name": "Fuoco", "icon": "🔥", "opposite": "ghiaccio"},
+		"ghiaccio": {"name": "Ghiaccio", "icon": "❄️", "opposite": "fuoco"},
+		"elettrico": {"name": "Elettrico", "icon": "⚡", "opposite": "terra"},
+		"terra": {"name": "Terra", "icon": "🌍", "opposite": "elettrico"},
+		"sole": {"name": "Sole", "icon": "☀️", "opposite": "oscurita"},
+		"sacro": {"name": "Sacro", "icon": "✨", "opposite": "maledetto"},
+		"oscurita": {"name": "Oscurità", "icon": "🌑", "opposite": "sacro"},
+		"maledetto": {"name": "Maledetto", "icon": "☠️", "opposite": "sacro"},
+		"morso": {"name": "Morso", "icon": "🦷"},
+		"graffio": {"name": "Graffio", "icon": "🐾"},
+		"artiglio": {"name": "Artiglio", "icon": "🐾"}
 	},
 	"weather": {
 		"sun": {

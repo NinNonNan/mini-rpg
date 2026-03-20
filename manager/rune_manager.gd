@@ -3,7 +3,7 @@ extends Control
 # Segnali verso il sistema di gioco/combattimento
 signal spell_cast_success(spell_id, final_power, cost, type)
 signal spell_cast_failed(reason)
-signal request_target_selection(spell_list)
+signal request_target_selection(spell_data)
 signal combo_finished(total_spells)
 
 # Configurazione Gameplay
@@ -15,6 +15,7 @@ const COST_SCALING_FACTOR = 0.75 # Il costo diminuisce del 25% per ogni spell ne
 
 # Variabili di Stato
 var rune_data = {}
+var damage_types_data = {}
 var current_sequence = []
 var current_icons = []
 var start_time_ms = 0
@@ -43,18 +44,30 @@ func _ready():
 	rune_display_label.add_theme_font_size_override("font_size", 50)
 	# Centra le rune visualizzate orizzontalmente
 	rune_display_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Riserva spazio verticale fisso per evitare spostamenti quando si scrive la prima runa
+	rune_display_label.custom_minimum_size.y = 80
+	rune_display_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 func _load_rune_data():
-	var file = FileAccess.open("res://runes.json", FileAccess.READ)
-	if file:
+	var runes_file = FileAccess.open("res://runes.json", FileAccess.READ)
+	if runes_file:
 		var json = JSON.new()
-		var error = json.parse(file.get_as_text())
+		var error = json.parse(runes_file.get_as_text())
 		if error == OK:
 			rune_data = json.data
 		else:
 			push_error("RuneManager: Errore parsing runes.json")
 	else:
 		push_error("RuneManager: File runes.json non trovato!")
+	
+	var story_file = FileAccess.open("res://story.json", FileAccess.READ)
+	if story_file:
+		var json = JSON.new()
+		var error = json.parse(story_file.get_as_text())
+		if error == OK:
+			damage_types_data = json.data.get("damage_types", {})
+	else:
+		push_error("RuneManager: File story.json non trovato!")
 
 # Metodo pubblico per avviare il manager
 func start_rune_casting():
@@ -180,7 +193,9 @@ func _process_success(spell, time_taken_ms):
 	# Accumula l'incantesimo nella lista
 	accumulated_spells.append({
 		"id": spell.get("id", "unknown_spell"),
+		"name": spell.get("name", "spell_unknown"),
 		"power": spell.get("base_power", 0) * speed_mult,
+		"speed_mult": speed_mult,
 		"cost": scaled_cost,
 		"type": spell.get("type", "neutral")
 	})
@@ -205,7 +220,69 @@ func _end_session():
 	is_active = false
 	hide()
 	if accumulated_spells.size() > 0:
-		request_target_selection.emit(accumulated_spells)
+		# 1. Raggruppa potenza per tipo e calcola costo totale
+		var power_by_type = {}
+		var total_cost = 0.0
+		for spell in accumulated_spells:
+			var spell_type = spell.get("type", "neutral")
+			var spell_power = spell.get("power", 0.0)
+			
+			if not power_by_type.has(spell_type):
+				power_by_type[spell_type] = 0.0
+			power_by_type[spell_type] += spell_power
+			
+			total_cost += spell.get("cost", 0.0)
+
+		# 2. Gestisci gli opposti: si annullano a vicenda
+		var processed_types = [] # Per non processare una coppia due volte
+		for type1 in power_by_type.keys():
+			if type1 in processed_types: continue
+
+			var type1_data = damage_types_data.get(type1, {})
+			var opposite_type = type1_data.get("opposite")
+
+			if opposite_type and power_by_type.has(opposite_type):
+				var power1 = power_by_type[type1]
+				var power2 = power_by_type[opposite_type]
+				
+				if power1 >= power2:
+					power_by_type[type1] = power1 - power2
+					power_by_type[opposite_type] = 0.0
+				else:
+					power_by_type[opposite_type] = power2 - power1
+					power_by_type[type1] = 0.0
+				
+				processed_types.append(type1)
+				processed_types.append(opposite_type)
+
+		# 3. Calcola potenza totale e determina il tipo dominante
+		var total_power = 0.0
+		var main_type = "neutral"
+		var max_power = 0.0
+		
+		for type in power_by_type.keys():
+			var power = power_by_type[type]
+			total_power += power
+			if power > max_power:
+				max_power = power
+				main_type = type
+		
+		if total_power <= 0:
+			main_type = "neutral"
+			total_power = 0
+
+		# 4. Crea l'incantesimo aggregato
+		var aggregated_spell = {
+			"id": "rune_combo",
+			"name": "Combo Runica",
+			"power": total_power,
+			"cost": total_cost,
+			"type": main_type
+		}
+
+		if OS.is_debug_build():
+			print("RuneManager: Requesting target for aggregated spell: ", aggregated_spell)
+		request_target_selection.emit(aggregated_spell)
 	else:
 		# Emettiamo combo_finished solo se non ci sono spell da lanciare (fallimento)
 		# Altrimenti lasciamo il controllo alla selezione bersaglio
