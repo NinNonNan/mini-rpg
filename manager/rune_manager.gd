@@ -3,6 +3,7 @@ extends Control
 # Segnali verso il sistema di gioco/combattimento
 signal spell_cast_success(spell_id, final_power, cost, type)
 signal spell_cast_failed(reason)
+signal request_target_selection(spell_list)
 signal combo_finished(total_spells)
 
 # Configurazione Gameplay
@@ -19,6 +20,7 @@ var current_icons = []
 var start_time_ms = 0
 var current_combo_index = 0
 var is_active = false
+var accumulated_spells = []
 
 # Riferimenti UI (Assicurati che i nomi dei nodi nella scena corrispondano)
 @onready var feedback_label = $Panel/CenterContainer/VBoxContainer/FeedbackLabel
@@ -71,6 +73,7 @@ func start_rune_casting():
 	show()
 	is_active = true
 	current_combo_index = 0
+	accumulated_spells.clear()
 	_prepare_round(tr("rune_prompt_start"))
 
 func _prepare_round(prompt_text: String) -> void:
@@ -156,6 +159,9 @@ func _evaluate_spell_attempt():
 	else:
 		# Fallimento
 		feedback_label.text = tr("rune_fizzle")
+		# Se un incantesimo fallisce, l'intera catena si spezza e si perde.
+		# Svuotiamo gli incantesimi accumulati per terminare la sessione senza lanciare nulla.
+		accumulated_spells.clear()
 		await get_tree().create_timer(1.0).timeout
 		_end_session()
 
@@ -169,11 +175,16 @@ func _process_success(spell, time_taken_ms):
 		speed_mult = 1.0 + factor 
 	
 	# 2. Calcolo Costo Scalare per Combo
-	var scaled_cost = spell["cost"] * pow(COST_SCALING_FACTOR, current_combo_index)
+	var scaled_cost = spell.get("cost", 0) * pow(COST_SCALING_FACTOR, current_combo_index)
 	
-	# Emetti segnale per applicare effetti
-	spell_cast_success.emit(spell["id"], spell["base_power"] * speed_mult, scaled_cost, spell["type"])
-	
+	# Accumula l'incantesimo nella lista
+	accumulated_spells.append({
+		"id": spell.get("id", "unknown_spell"),
+		"power": spell.get("base_power", 0) * speed_mult,
+		"cost": scaled_cost,
+		"type": spell.get("type", "neutral")
+	})
+
 	# 3. Gestione Combo / Concatenazione
 	# Se l'esecuzione è "perfetta" (tempo minimo) e non abbiamo raggiunto il limite
 	if time_taken_ms <= PERFECT_TIME_THRESHOLD_MS and current_combo_index < MAX_COMBO_CHAIN:
@@ -193,7 +204,12 @@ func _process_success(spell, time_taken_ms):
 func _end_session():
 	is_active = false
 	hide()
-	combo_finished.emit(current_combo_index)
+	if accumulated_spells.size() > 0:
+		request_target_selection.emit(accumulated_spells)
+	else:
+		# Emettiamo combo_finished solo se non ci sono spell da lanciare (fallimento)
+		# Altrimenti lasciamo il controllo alla selezione bersaglio
+		combo_finished.emit(current_combo_index)
 
 # Debug veloce
 func _input(event):

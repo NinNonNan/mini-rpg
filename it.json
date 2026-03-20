@@ -107,5 +107,7 @@
 	"rune_fizzle": "L'incantesimo fallisce...",
 	"rune_perfect_chain": "PERFETTO! Lancia ancora!",
 	"rune_cast_complete": "Incantesimo lanciato.",
-	"rune_fireball": "Fiamma del Sole Vivente"
+	"rune_fireball": "Fiamma del Sole Vivente",
+	"rune_heal": "Sigillo della Vita Fluente",
+	"rune_thunder": "Assalto della Tempesta Sacra"
 }
