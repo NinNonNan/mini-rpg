@@ -1,5 +1,9 @@
 extends Control
 
+# NOTA IMPORTANTE:
+# NON inserire stringhe di testo hardcoded (es. "Hai lanciato...") direttamente nel codice.
+# Usa sempre tr("chiave_json") e definisci la chiave corrispondente nel file data/it.json.
+
 # Segnali verso il sistema di gioco/combattimento
 signal spell_cast_success(spell_id, final_power, cost, type)
 signal spell_cast_failed(reason)
@@ -49,25 +53,27 @@ func _ready():
 	rune_display_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 func _load_rune_data():
-	var runes_file = FileAccess.open("res://runes.json", FileAccess.READ)
+	# ATTENZIONE: I percorsi dei file JSON sono fissi in res://data/.
+	# NON MODIFICARE questi percorsi a meno di una specifica richiesta.
+	var runes_file = FileAccess.open("res://data/runes.json", FileAccess.READ)
 	if runes_file:
 		var json = JSON.new()
 		var error = json.parse(runes_file.get_as_text())
 		if error == OK:
 			rune_data = json.data
 		else:
-			push_error("RuneManager: Errore parsing runes.json")
+			push_error(tr("error_rune_parse"))
 	else:
-		push_error("RuneManager: File runes.json non trovato!")
+		push_error(tr("error_rune_file_not_found"))
 	
-	var story_file = FileAccess.open("res://story.json", FileAccess.READ)
+	var story_file = FileAccess.open("res://data/story.json", FileAccess.READ)
 	if story_file:
 		var json = JSON.new()
 		var error = json.parse(story_file.get_as_text())
 		if error == OK:
 			damage_types_data = json.data.get("damage_types", {})
 	else:
-		push_error("RuneManager: File story.json non trovato!")
+		push_error(tr("error_story_file_not_found_rune"))
 
 # Metodo pubblico per avviare il manager
 func start_rune_casting():
@@ -204,7 +210,7 @@ func _process_success(spell, time_taken_ms):
 	# Se l'esecuzione è "perfetta" (tempo minimo) e non abbiamo raggiunto il limite
 	if time_taken_ms <= PERFECT_TIME_THRESHOLD_MS and current_combo_index < MAX_COMBO_CHAIN:
 		current_combo_index += 1
-		feedback_label.text = tr("rune_perfect_chain") + " (x%d)" % current_combo_index
+		feedback_label.text = tr("rune_perfect_chain") + (tr("rune_chain_multiplier") % current_combo_index)
 		
 		# Breve pausa per mostrare il feedback positivo
 		await get_tree().create_timer(0.6).timeout
@@ -212,7 +218,7 @@ func _process_success(spell, time_taken_ms):
 		# Riavvia il round con rune rimescolate
 		await _prepare_round(tr("rune_prompt_start"))
 	else:
-		feedback_label.text = "Hai lanciato " + tr(spell.get("name", "spell_unknown"))
+		feedback_label.text = tr("rune_cast_msg") % tr(spell.get("name", "spell_unknown"))
 		await get_tree().create_timer(1.0).timeout
 		_end_session()
 
@@ -221,6 +227,7 @@ func _end_session():
 	hide()
 	if accumulated_spells.size() > 0:
 		# 1. Raggruppa potenza per tipo e calcola costo totale
+		# Somma la potenza base di tutte le spell lanciate nella combo, divise per tipo elementale.
 		var power_by_type = {}
 		var total_cost = 0.0
 		for spell in accumulated_spells:
@@ -233,7 +240,13 @@ func _end_session():
 			
 			total_cost += spell.get("cost", 0.0)
 
+		if OS.is_debug_build():
+			print("\n" + tr("debug_rune_calc_start"))
+			print(tr("debug_rune_raw_power") % str(power_by_type))
+
 		# 2. Gestisci gli opposti: si annullano a vicenda
+		# Es. Se ho Fuoco (10) e Ghiaccio (6), il risultato è Fuoco (4).
+		# I tipi opposti sono definiti in story.json -> damage_types.
 		var processed_types = [] # Per non processare una coppia due volte
 		for type1 in power_by_type.keys():
 			if type1 in processed_types: continue
@@ -244,6 +257,9 @@ func _end_session():
 			if opposite_type and power_by_type.has(opposite_type):
 				var power1 = power_by_type[type1]
 				var power2 = power_by_type[opposite_type]
+				
+				if OS.is_debug_build():
+					print(tr("debug_rune_conflict") % [type1, power1, opposite_type, power2])
 				
 				if power1 >= power2:
 					power_by_type[type1] = power1 - power2
@@ -256,6 +272,7 @@ func _end_session():
 				processed_types.append(opposite_type)
 
 		# 3. Calcola potenza totale e determina il tipo dominante
+		# Il tipo con la potenza residua maggiore determina l'elemento finale dell'attacco.
 		var total_power = 0.0
 		var main_type = "neutral"
 		var max_power = 0.0
@@ -271,17 +288,22 @@ func _end_session():
 			main_type = "neutral"
 			total_power = 0
 
+		if OS.is_debug_build():
+			print(tr("debug_rune_final_power") % str(power_by_type))
+			print(tr("debug_rune_result") % [main_type, total_power])
+			print(tr("debug_rune_separator"))
+
 		# 4. Crea l'incantesimo aggregato
 		var aggregated_spell = {
 			"id": "rune_combo",
-			"name": "Combo Runica",
+			"name": "spell_combo_runic",
 			"power": total_power,
 			"cost": total_cost,
 			"type": main_type
 		}
 
 		if OS.is_debug_build():
-			print("RuneManager: Requesting target for aggregated spell: ", aggregated_spell)
+			print(tr("debug_rune_request_target") % str(aggregated_spell))
 		request_target_selection.emit(aggregated_spell)
 	else:
 		# Emettiamo combo_finished solo se non ci sono spell da lanciare (fallimento)

@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://cql0pomvglwoj" path="res://manager/qte_manager.gd" id="11_iotsf"]
 [ext_resource type="Script" uid="uid://bdhqckafmw8k5" path="res://manager/meteo_manager.gd" id="11_mfdv2"]
 [ext_resource type="Script" uid="uid://b04gpwp1lwtq4" path="res://manager/rune_manager.gd" id="12_iotsf"]
+[ext_resource type="Script" path="res://manager/stats_manager.gd" id="13_lc2xo"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
 
@@ -271,3 +272,12 @@ theme_override_font_sizes/font_size = 20
 [node name="RuneGrid" type="GridContainer" parent="Manager/Rune/Panel/CenterContainer/VBoxContainer" unique_id=703575075]
 layout_mode = 2
 columns = 6
+
+[node name="Stats" type="Control" parent="Manager" unique_id=1205058568]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("13_lc2xo")

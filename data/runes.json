@@ -35,16 +35,16 @@
 			"type": "fuoco"
 		},
 		{
-			"id": "spell_heal",
-			"name": "spell_heal",
+			"id": "rune_heal",
+			"name": "rune_heal",
 			"sequence": ["uruz", "berkanan", "laguz"],
 			"base_power": 8,
 			"cost": 4,
 			"type": "sacro"
 		},
 		{
-			"id": "spell_thunder",
-			"name": "spell_thunder",
+			"id": "rune_thunder",
+			"name": "rune_thunder",
 			"sequence": ["thurisaz", "algiz", "hagalaz"],
 			"base_power": 12,
 			"cost": 6,

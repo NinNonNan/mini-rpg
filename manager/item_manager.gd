@@ -97,31 +97,45 @@ func get_player_damage() -> Array:
 	var damage_die = 2 # danno base (pugni)
 	var damage_quality = 0 # bonus fisso base
 	var damage_type = "" # tipo di danno (es. "taglio"), vuoto per default
+	var damage_source = game.tr("weapon_fists") # Fonte del danno (default: Pugni)
 	
-	for item_id in game.inventory:
-		if game.item_data.has(item_id):
+	# Controlliamo solo gli slot delle mani per le armi
+	var hand_slots = ["Mano Destra", "Mano Sinistra"]
+	
+	for slot in hand_slots:
+		if game.equipment.has(slot):
+			var item_id = game.equipment[slot]
 			
-			var item_stats = game.item_data[item_id]
-			var item_die = int(item_stats.get("damage", 0))
-			var item_qual = int(item_stats.get("quality", 0))
-			var item_type = item_stats.get("type", "")
-			
-			# Logica per scegliere l'arma migliore:
-			# Privilegiamo il dado più alto. A parità di dado, chi ha più qualità.
-			if item_die > damage_die:
-				damage_die = item_die
-				damage_quality = item_qual
-				damage_type = item_type
-			elif item_die == damage_die:
-				if item_qual > damage_quality:
+			if game.item_data.has(item_id):
+				var item_stats = game.item_data[item_id]
+				var item_die = int(item_stats.get("damage", 0))
+				
+				# Ignoriamo oggetti che non fanno danno (es. torcia se ha danno 0) o consumabili equipaggiati
+				if item_die <= 0:
+					continue
+
+				var item_qual = int(item_stats.get("quality", 0))
+				var item_type = item_stats.get("type", "")
+				var item_name = get_item_name(item_id)
+				
+				# Logica per scegliere l'arma migliore tra le due mani
+				if item_die > damage_die:
+					damage_die = item_die
 					damage_quality = item_qual
 					damage_type = item_type
+					damage_source = item_name
+				elif item_die == damage_die:
+					# A parità di dado, preferiamo quella con più qualità o che ha un tipo definito (es. Daga d2 vs Pugni d2)
+					if item_qual > damage_quality or (damage_type == "" and item_type != ""):
+						damage_quality = item_qual
+						damage_type = item_type
+						damage_source = item_name
 	
 	# Genera il danno casuale
 	var damage_roll = randi_range(1, damage_die)
 	var total_damage = damage_roll + damage_quality
 	
-	return [total_damage, damage_die, damage_quality, damage_type]
+	return [total_damage, damage_die, damage_quality, damage_type, damage_source]
 
 
 # ---------------------------------------------------------
@@ -140,7 +154,7 @@ func get_player_damage() -> Array:
 func use_item(item_id: String) -> String:
 	
 	if not game.item_data.has(item_id):
-		return "Errore: Oggetto non trovato."
+		return game.tr("item_use_error")
 		
 	var item_props = game.item_data[item_id]
 	var translated_name = get_item_name(item_id)
@@ -171,4 +185,4 @@ func use_item(item_id: String) -> String:
 	
 	
 	# Oggetto senza effetti definiti
-	return "Non succede nulla."
+	return game.tr("item_use_no_effect")

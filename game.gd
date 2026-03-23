@@ -8,6 +8,7 @@ extends Control
 @onready var enemy_stats = $UI/VBC_Main/MC_Enemy/PC/HBC/StatsText
 @onready var text = $UI/VBC_Main/MC_Story/PC/HBC/StoryText
 @onready var player_icon = $UI/VBC_Main/MC_Player/PC/HBC/Icon
+@onready var player_box_container = $UI/VBC_Main/MC_Player
 @onready var player_stats = $UI/VBC_Main/MC_Player/PC/HBC/StatsText
 @onready var b1 = $UI/VBC_Main/VBC_Button/MC1/Choice1
 @onready var b2 = $UI/VBC_Main/VBC_Button/MC2/Choice2
@@ -26,14 +27,40 @@ extends Control
 @onready var death_manager = $Manager/Death as DeathManager
 @onready var meteo_manager = $Manager/Meteo as MeteoManager
 @onready var rune_manager = $Manager/Rune
+@onready var stats_manager = $Manager/Stats # Richiede script StatsManager
 
 # --- Stato del Gioco ---
-var health: int = 10
-var mana: int = 10
-var mood: int = 0
-var max_health: int = 10
-var max_mana: int = 10
-var max_mood: int = 0
+var player_energy: Dictionary = {}
+var player_max_energy: Dictionary = {}
+
+# --- Equipaggiamento ---
+var equipment: Dictionary = {} # Mappa slot_id -> item_id
+var equipment_slots: Array[String] = ["Mano Destra", "Mano Sinistra", "Corpo", "Testa", "Accessorio"]
+
+# --- Compatibilità (Bridge) ---
+# Queste proprietà permettono agli altri script di usare game.health 
+# mentre noi usiamo il sistema dinamico player_energy sotto il cofano.
+var health: int:
+	get: return player_energy.get("life", 0)
+	set(value): modify_player_energy("life", value - player_energy.get("life", 0))
+var max_health: int:
+	get: return player_max_energy.get("life", 0)
+	set(value): player_max_energy["life"] = value
+
+var mana: int:
+	get: return player_energy.get("magic", 0)
+	set(value): modify_player_energy("magic", value - player_energy.get("magic", 0))
+var max_mana: int:
+	get: return player_max_energy.get("magic", 0)
+	set(value): player_max_energy["magic"] = value
+
+var mood: int:
+	get: return player_energy.get("mood", 0)
+	set(value): modify_player_energy("mood", value - player_energy.get("mood", 0))
+var max_mood: int:
+	get: return player_max_energy.get("mood", 0)
+	set(value): player_max_energy["mood"] = value
+
 var inventory: Array[String] = []
 var current_entity_pronoun: String = ""
 var current_victory_scene: String = ""
@@ -44,6 +71,8 @@ var qte_power_multiplier: float = 0.2 # Moltiplicatore per la velocità del QTE
 var qte_context: String = "" # Contesto per sapere perché è stato avviato il QTE
 signal target_clicked(target_type)
 var use_visual_health: bool = true
+var grayscale_material: ShaderMaterial
+var death_overlay: ColorRect
 
 # --- Database ---
 var story: Dictionary = {}
@@ -57,6 +86,30 @@ func _ready():
 	# QTE
 	if qte:
 		qte.qte_finished.connect(_on_qte_finished)
+	
+	# --- CONFIGURAZIONE GLOBALE FONT ---
+	var font_path = "res://fonts/freecam v2.ttf"
+	if ResourceLoader.exists(font_path):
+		var global_theme = Theme.new()
+		global_theme.default_font = load(font_path)
+		global_theme.default_font_size = 20
+		theme = global_theme
+
+	# Setup Pulsante Long Press per Configurazione (Sopra le stat del player)
+	if player_box_container:
+		var stats_btn = LongPressButton.new()
+		stats_btn.name = "StatsConfigButton"
+		stats_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		stats_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stats_btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		stats_btn.focus_mode = Control.FOCUS_NONE
+		stats_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+		stats_btn.long_pressed.connect(func():
+			Input.vibrate_handheld(100)
+			if stats_manager:
+				stats_manager.open_config_menu()
+		)
+		player_box_container.add_child(stats_btn)
 
 	# Controlli nodi
 	if not text:
@@ -74,7 +127,9 @@ func _ready():
 	if not meteo_manager:
 		push_error(tr("error_node_meteo_not_found"))
 	if not rune_manager:
-		push_error("ERRORE: Nodo RuneManager non trovato in $Manager/Rune")
+		push_error(tr("error_rune_manager_node_missing"))
+	if not stats_manager:
+		push_warning(tr("warn_stats_manager_missing"))
 
 	# Impostazioni grafica
 	#text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
@@ -86,7 +141,7 @@ func _ready():
 	_load_translations()
 
 	# Iniezione Game nei manager
-	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager]:
+	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager]:
 		if mgr:
 			mgr.game = self
 
@@ -108,38 +163,47 @@ func _ready():
 		dialogue_manager.dialogue_finished.connect(show_scene)
 		dialogue_manager.dialogue_failed.connect(_start_prepared_combat)
 
+	# Inizializza effetti grafici per la morte
+	# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
+	_init_death_effects()
+
 	# Avvio scena iniziale
 	show_scene(current_scene)
 
 # --- Caricamento JSON ---
 func _load_story():
-	var json_data = StoryLoader.load_json_file("res://story.json")
+	# ATTENZIONE: I percorsi dei file JSON sono fissi in res://data/.
+	# NON MODIFICARE questi percorsi a meno di una specifica richiesta.
+	var json_data = StoryLoader.load_json_file("res://data/story.json")
 	if json_data == null:
 		text.text = tr("error_story_load_short")
 		return
 	story_data = json_data
 	story = json_data.get("scenes", {})
-	item_data = json_data.get("items", {})
 	entity_data = json_data.get("entities", {})
 	damage_types_data = json_data.get("damage_types", {})
 
+	# Caricamento items separato
+	var items_json = StoryLoader.load_json_file("res://data/items.json")
+	if items_json != null:
+		item_data = items_json
+	
 	var player_data = json_data.get("player", {})
 	if player_data.has("energy"):
-		for stat in player_data["energy"]:
-			if stat.get("type") == "life":
-				max_health = int(stat.get("value", 10))
-				health = max_health
-			elif stat.get("type") == "magic":
-				max_mana = int(stat.get("value", 10))
-				mana = max_mana
-			elif stat.get("type") == "mood":
-				max_mood = int(stat.get("value", 0))
-				mood = max_mood
+		player_energy.clear()
+		player_max_energy.clear()
+		for stat in player_data.get("energy", []):
+			var type_id = stat.get("type")
+			if type_id:
+				var value = int(stat.get("value", 0))
+				player_max_energy[type_id] = value
+				player_energy[type_id] = value
 	if player_icon and player_data.has("icon") and player_data["icon"] != "":
 		player_icon.texture = load(player_data["icon"])
 
 func _load_translations(lang_code: String = "it"):
-	var file_path = "res://%s.json" % lang_code
+	# ATTENZIONE: Percorso fisso per le traduzioni in res://data/. NON MODIFICARE.
+	var file_path = "res://data/%s.json" % lang_code
 	if not FileAccess.file_exists(file_path):
 		push_error(tr("error_translation_file_not_found") % file_path)
 		return
@@ -157,31 +221,64 @@ func _load_translations(lang_code: String = "it"):
 
 # --- Stats ---
 func get_player_energy_value(type_id: String) -> int:
-	match type_id:
-		"life": return health
-		"magic": return mana
-		"mood": return mood
-	return 0
+	return player_energy.get(type_id, 0)
 
 func modify_player_energy(type_id: String, amount: int):
-	match type_id:
-		"life":
-			health = clampi(health + amount, 0, max_health)
-			if health <= 0: game_over()
-		"magic":
-			mana = clampi(mana + amount, 0, max_mana)
-		"mood":
-			mood = clampi(mood + amount, 0, max_mood)
+	if not player_energy.has(type_id):
+		return
+
+	var current_value = player_energy[type_id]
+	var max_value = player_max_energy.get(type_id, 0)
+	var new_value = current_value + amount
+
+	if type_id == "life":
+		# La vita può scendere sotto lo 0 per mostrare il danno in eccesso
+		player_energy[type_id] = int(min(new_value, max_value))
+		if player_energy.get("life", 0) <= 0:
+			game_over()
+	else:
+		# Le altre statistiche sono bloccate tra 0 e il loro massimo.
+		player_energy[type_id] = clampi(new_value, 0, max_value)
+
 	update_stats()
 
-func get_health_string(amount: int) -> String:
-	return "❤️ %d" % amount if use_visual_health else str(amount) + " HP"
+func equip_item(item_id: String, slot: String):
+	# Se lo slot è occupato, rimuovi prima l'oggetto attuale
+	if slot in equipment:
+		unequip_item(slot)
+	
+	# Rimuovi dall'inventario e aggiungi all'equipaggiamento
+	if item_id in inventory:
+		inventory.erase(item_id) # Rimuove la prima occorrenza trovata
+		equipment[slot] = item_id
+		update_stats()
 
-func get_mana_string(amount: int) -> String:
-	return "💧 %d" % amount if use_visual_health else str(amount) + " MP"
+func unequip_item(slot: String):
+	if slot in equipment:
+		var item_id = equipment[slot]
+		equipment.erase(slot)
+		inventory.append(item_id)
+		update_stats()
 
-func get_mood_string(amount: int) -> String:
-	return "😊 %d" % amount if use_visual_health else str(amount) + " Umore"
+func get_energy_string(type_id: String, amount: int, max_amount: int = -1) -> String:
+	var icon = ""
+	var abbr = ""
+	if story_data.has("energy_types") and story_data["energy_types"].has(type_id):
+		var type_data = story_data["energy_types"][type_id]
+		icon = type_data.get("icon", "")
+		abbr = type_data.get("abbreviation", "")
+
+	var value_str = str(amount)
+	if max_amount >= 0:
+		value_str = "%d/%d" % [amount, max_amount]
+	
+	if use_visual_health and icon:
+		if abbr:
+			return "%s: %s %s" % [abbr, icon, value_str]
+		return "%s %s" % [icon, value_str]
+	else:
+		var label = abbr if abbr else tr(story_data.get("energy_types", {}).get(type_id, {}).get("name", type_id))
+		return "%s: %s" % [label, value_str]
 
 func get_damage_type_icon(type_id: String) -> String:
 	if damage_types_data.has(type_id):
@@ -211,8 +308,34 @@ func update_stats():
 				if stat.get("type") == "life":
 					hp = int(stat.get("value", 0))
 		entity_text = tr("stats_enemy_hp") % get_health_string(hp)
+	
 	if player_stats:
-		player_stats.text = tr("stats_player") % [get_health_string(health), get_mana_string(mana), get_mood_string(mood), inv_str]
+		var stats_lines: Array[String] = []
+		var player_energy_definitions: Array = story_data.get("player", {}).get("energy", [])
+
+		# Ordina le statistiche in base a 'display_order'
+		player_energy_definitions.sort_custom(func(a, b): return a.get("display_order", 99) < b.get("display_order", 99))
+
+		# Prendi solo le prime 3 da visualizzare
+		var stats_to_display = player_energy_definitions.slice(0, 3)
+
+		for stat_def in stats_to_display:
+			var type_id = stat_def.get("type")
+			if type_id:
+				var current_value = get_player_energy_value(type_id)
+				var max_value = player_max_energy.get(type_id, 0)
+				stats_lines.append(get_energy_string(type_id, current_value, max_value))
+		
+		# Aggiungi l'inventario
+		var inv_line: String
+		if use_visual_health:
+			inv_line = "🎒 %s" % inv_str
+		else:
+			inv_line = "%s %s" % [tr("stats_inventory_prefix"), inv_str]
+		stats_lines.append(inv_line)
+
+		player_stats.text = "\n".join(stats_lines)
+
 	if enemy_stats_box and enemy_stats:
 		enemy_stats.text = entity_text
 		if enemy_icon:
@@ -222,6 +345,10 @@ func update_stats():
 			else:
 				enemy_icon.texture = null
 		enemy_stats_box.visible = true
+
+# Funzione deprecata ma mantenuta per compatibilità interna
+func get_health_string(amount: int) -> String:
+	return get_energy_string("life", amount)
 
 # --- Scene & Choices ---
 func show_scene(scene_name):
@@ -336,7 +463,7 @@ func _on_spell_cast_success(spell_id, power, cost, type):
 				msg += " " + tr("combat_victory")
 				# Nota: Il CombatManager gestirà la transizione al prossimo click o update
 		else:
-			msg = "Incantesimo lanciato, ma nessun nemico in vista."
+			msg = tr("spell_cast_no_enemy")
 
 	# Aggiorna il testo e le statistiche
 	text.text += "\n" + msg
@@ -346,24 +473,85 @@ func _on_rune_combo_finished(total_spells):
 	if total_spells > 0:
 		text.text += "\n\nCombo Rune terminata! Incantesimi totali: %d" % total_spells
 
+func _init_death_effects():
+	# 1. Shader Grayscale per l'icona
+	var shader = Shader.new()
+	shader.code = """
+		shader_type canvas_item;
+		void fragment() {
+			vec4 tex_color = texture(TEXTURE, UV);
+			float gray = dot(tex_color.rgb, vec3(0.299, 0.587, 0.114));
+			COLOR = vec4(vec3(gray), tex_color.a);
+		}
+	"""
+	grayscale_material = ShaderMaterial.new()
+	grayscale_material.shader = shader
+
+	# 2. Overlay A TUTTO SCHERMO per Game Over
+	death_overlay = ColorRect.new()
+	death_overlay.color = Color(0, 0, 0, 0.85) # Velo nero semitrasparente
+	death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	death_overlay.z_index = 100 # Assicura che sia sopra a tutto (UI compresa)
+	death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP # Blocca i click sotto
+	death_overlay.hide()
+	
+	# Scritta Rossa Grande al centro
+	var label = Label.new()
+	label.text = tr("game_over_title")
+	label.add_theme_color_override("font_color", Color(0.9, 0, 0)) # Rosso sangue
+	label.add_theme_font_size_override("font_size", 80) # Molto grande
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	death_overlay.add_child(label)
+	
+	# Gestione Click per ricominciare
+	death_overlay.gui_input.connect(func(event):
+		if event is InputEventMouseButton and event.pressed:
+			_restart_game()
+	)
+	
+	# Aggiungi direttamente alla radice del gioco per coprire tutto
+	add_child(death_overlay)
+
 # --- Game Over ---
 func game_over():
 	if death_manager:
 		death_manager.record_player_death()
 	text.text = tr("game_over_text")
-	enable_choices()
-	health = max_health
-	mana = max_mana
-	mood = max_mood
-	inventory.clear()
+	disable_choices()
 	if combat_manager: combat_manager.current_entity_health = 0
 	if dialogue_manager: dialogue_manager.reset()
-	b1.text = tr("game_over_choice")
-	b1.show()
-	_clear_signals(b1)
-	b1.pressed.connect(show_scene.bind("start"))
+	b1.hide()
 	b2.hide()
 	b3.hide()
+
+	# Applica effetti visivi morte
+	# !!! NON RIMUOVERE QUESTE RIGHE !!! Gestiscono il feedback visivo di morte (icona grigia e overlay scuro).
+	if player_icon: player_icon.material = grayscale_material
+	if player_stats: player_stats.material = grayscale_material
+	if death_overlay:
+		death_overlay.modulate.a = 0.0
+		death_overlay.show()
+		var tween = create_tween()
+		tween.set_ease(Tween.EASE_IN)
+		tween.set_trans(Tween.TRANS_CUBIC)
+		tween.tween_property(death_overlay, "modulate:a", 1.0, 0.7)
+
+func _restart_game():
+	# Ricarica i dati iniziali per resettare le statistiche (incluse quelle potenziate)
+	_load_story()
+	inventory.clear()
+	equipment.clear()
+
+	# Rimuovi effetti visivi morte
+	# !!! NON RIMUOVERE QUESTE RIGHE !!! Ripristinano la grafica normale al riavvio.
+	if player_icon: player_icon.material = null
+	if player_stats: player_stats.material = null
+	if death_overlay: death_overlay.hide()
+
+	enable_choices()
+	show_scene("start")
 
 func notify_entity_death(entity_id: String):
 	if death_manager:
@@ -498,12 +686,7 @@ func _update_growth_menu():
 
 		var stat_name_key = energy_type_definitions.get(stat_id, {}).get("name", stat_id)
 		var stat_name = tr(stat_name_key)
-		var current_value = 0
-		match stat_id:
-			"life": current_value = max_health
-			"magic": current_value = max_mana
-			"mood": current_value = max_mood
-			_: continue # Salta le statistiche non potenziabili (se ce ne fossero)
+		var current_value = player_max_energy.get(stat_id, 0)
 		
 		var btn = buttons[button_index]
 		btn.text = tr("growth_btn_stat") % [stat_name, current_value]

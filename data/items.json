@@ -1,0 +1,34 @@
+{
+	"spada": {
+		"name": "item_sword",
+		"icon": "🗡️",
+		"damage": 4.0,
+		"quality": 1.0,
+		"type": "taglio",
+		"hands": 1
+	},
+	"ascia": {
+		"name": "item_axe",
+		"icon": "🪓",
+		"damage": 6.0,
+		"quality": 0.0,
+		"type": "taglio",
+		"hands": 2
+	},
+	"torcia": {
+		"name": "item_torch",
+		"icon": "🔥",
+		"damage": 0.0,
+		"quality": 3.0,
+		"type": "fuoco",
+		"hands": 1
+	},
+	"pozione": {
+		"name": "item_potion",
+		"icon": "🍻",
+		"heal": 5.0,
+		"quality": 2.0,
+		"consumable": true,
+		"hands": 1
+	}
+}

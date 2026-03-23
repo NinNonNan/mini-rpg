@@ -12,6 +12,10 @@
 # La UI e lo stato globale rimangono gestiti da Game.
 # Questo manager si occupa solo della logica di combattimento.
 
+# NOTA IMPORTANTE:
+# NON inserire stringhe di testo hardcoded (es. "Hai lanciato...") direttamente nel codice.
+# Usa sempre tr("chiave_json") e definisci la chiave corrispondente nel file data/it.json.
+
 class_name CombatManager
 extends Node  # Non è un elemento visivo, quindi basta Node
 
@@ -149,7 +153,7 @@ func show_combat_buttons():
 func open_special_menu():
 	# Controllo di sicurezza: se il manager non è caricato, interrompi per evitare crash
 	if not game.special_manager:
-		push_error("SpecialManager non trovato! Impossibile aprire il menu abilità.")
+		push_error(game.tr("error_special_manager_missing"))
 		return
 
 	var all_spells = game.special_manager.spells
@@ -232,6 +236,9 @@ func _on_target_chosen(target_type: String):
 		await execute_spell(pending_spell_id, target_id)
 
 func execute_spell(spell_id: String, target_id: String):
+	
+	if OS.is_debug_build():
+		print(game.tr("debug_special_use") % [spell_id, target_id])
 		
 	# Esegue la magia
 	game.text.text = game.special_manager.use_spell(spell_id, target_id)
@@ -321,7 +328,7 @@ func start_rune_combat():
 			
 		game.rune_manager.start_rune_casting()
 	else:
-		push_error("RuneManager non trovato! Impossibile avviare la sequenza rune.")
+		push_error(game.tr("error_rune_manager_missing"))
 		# Fallback: passa il turno se qualcosa va storto
 		entity_turn()
 
@@ -428,14 +435,14 @@ func _execute_rune_combo(target_id):
 		if damage < 0:
 			msg = game.tr("spell_cast_heal") % [spell_name, abs(damage)]
 		else:
-			msg = "Ti sei colpito con %s per %d danni!" % [spell_name, damage] + msg_extra
+			msg = game.tr("combat_self_damage") % [spell_name, damage] + msg_extra
 	
 	elif target_id == current_entity_id:
 		current_entity_health -= damage
 		if current_entity_health < 0: current_entity_health = 0
 		
 		if damage < 0:
-			msg = "Il nemico assorbe %s e si cura!" % type
+			msg = game.tr("combat_enemy_absorb") % type
 		else:
 			msg = game.tr("spell_cast_damage") % [spell_name, damage] + msg_extra
 
@@ -473,6 +480,7 @@ func resolve_player_attack(qte_multiplier: float):
 	var damage_die = damage_result[1]
 	var quality = damage_result[2]
 	var damage_type = damage_result[3]
+	var weapon_name = damage_result[4]
 	
 	# Applica il moltiplicatore del QTE al danno base
 	total_damage = int(total_damage * qte_multiplier)
@@ -504,7 +512,8 @@ func resolve_player_attack(qte_multiplier: float):
 	# Applichiamo il danno (che potrebbe essere stato azzerato o raddoppiato)
 	var hp_before = current_entity_health
 	current_entity_health -= total_damage
-	print("[COMBAT LOG] Player Attack -> %s | Type: %s | DMG: %d | HP: %d -> %d" % [current_entity_id, damage_type, total_damage, hp_before, current_entity_health])
+
+	print(game.tr("log_combat_player_attack") % [weapon_name, current_entity_id, damage_type, total_damage, hp_before, current_entity_health])
 
 	# Il testo del risultato del QTE (es. "PERFECT!") è già stato mostrato da Game.gd.
 	# Aggiungiamo una nuova riga con i dettagli del danno.
@@ -596,7 +605,7 @@ func entity_turn():
 
 	var hp_before = game.health
 	game.health -= damage
-	print("[COMBAT LOG] Enemy Attack (%s) -> Player | Type: %s | DMG: %d | HP: %d -> %d" % [current_entity_id, attack_type, damage, hp_before, game.health])
+	print(game.tr("log_combat_enemy_attack") % [current_entity_id, attack_type, damage, hp_before, game.health])
 
 	game.update_stats()
 
