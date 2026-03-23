@@ -31,21 +31,22 @@ var game: Game
 # I segnali permettono al DialogueManager di comunicare
 # con altri nodi senza dipendere direttamente da essi.
 
-# Richiede alla UI di mostrare un testo
+# Richiede alla UI (tramite Game) di mostrare un testo narrativo.
 signal text_requested(text_content)
 
-# Richiede alla UI di aggiornare i pulsanti con nuove scelte
+# Richiede alla UI di aggiornare i pulsanti con un array di scelte.
 signal choices_requested(choices_array)
 
-# Segnale emesso quando il dialogo termina con successo
+# Emesso quando il dialogo termina con successo (mood >= 30).
+# Passa il nome della scena successiva a Game.gd.
 signal dialogue_finished(victory_scene_name)
 
-# Segnale emesso quando il dialogo fallisce
-# (di solito porta a un combattimento)
+# Emesso quando il dialogo fallisce (mood <= -15 o il giocatore attacca).
+# Di solito porta a un combattimento.
 signal dialogue_failed()
 
-# Segnale emesso quando cambia lo stato interno
-# (es. l'umore) e la UI deve aggiornare le statistiche
+# Emesso quando cambia lo stato interno (es. l'umore)
+# e la UI deve aggiornare le statistiche mostrate.
 signal stats_updated()
 
 
@@ -53,12 +54,12 @@ signal stats_updated()
 # STATO DEL DIALOGO
 # =========================================================
 
-# Indica se un dialogo è attualmente attivo
+# Flag che indica se un dialogo è attualmente in corso.
 var is_active = false
 
 # Umore attuale dell'entità durante il dialogo
-# Valori positivi = più favorevole
-# Valori negativi = più ostile
+# Valori positivi = più favorevole.
+# Valori negativi = più ostile.
 var current_mood = 0
 
 
@@ -66,13 +67,13 @@ var current_mood = 0
 # DATI DELL'ENTITÀ CORRENTE
 # =========================================================
 
-# Nome dell'entità con cui stiamo parlando
+# Nome dell'entità con cui stiamo parlando (es. "Drago").
 var _entity_name = ""
 
-# Pronome dell'entità (es. "lui", "lei", "esso")
+# Pronome dell'entità (es. "il", "la") per costruire frasi corrette.
 var _entity_pronoun = ""
 
-# Scena da caricare se il dialogo ha successo
+# Scena da caricare se il dialogo ha successo (es. "dragon_victory").
 var _victory_scene = ""
 
 
@@ -80,7 +81,7 @@ var _victory_scene = ""
 # INIZIO DEL DIALOGO
 # =========================================================
 # Viene chiamato dal Game quando il giocatore sceglie
-# di parlare con un'entità invece di attaccare.
+# "Dialoga" da una scena.
 
 func start_dialogue(entity_name: String, pronoun: String, starting_mood: int, victory_scene: String):
 
@@ -91,15 +92,15 @@ func start_dialogue(entity_name: String, pronoun: String, starting_mood: int, vi
 	current_mood = starting_mood
 	_victory_scene = victory_scene
 
-	# Mostra il messaggio iniziale
+	# Emette un segnale per mostrare il messaggio iniziale.
 	text_requested.emit(
-		"Inizi a parlare con %s %s." % [_entity_pronoun, _entity_name]
+		tr("dialogue_start") % [_entity_pronoun, _entity_name]
 	)
 
-	# Aggiorna le statistiche (mostra umore se conosciuto)
+	# Notifica la UI di aggiornare le statistiche (es. per mostrare l'umore).
 	stats_updated.emit()
 
-	# Piccola pausa narrativa
+	# Piccola pausa narrativa per dare tempo al giocatore di leggere.
 	await get_tree().create_timer(1.0).timeout
 
 	# Mostra le scelte di dialogo
@@ -109,7 +110,7 @@ func start_dialogue(entity_name: String, pronoun: String, starting_mood: int, vi
 # =========================================================
 # RESET DEL DIALOGO
 # =========================================================
-# Usato quando il dialogo termina o quando si cambia scena.
+# Usato da Game.gd quando il dialogo termina o si cambia scena.
 
 func reset():
 
@@ -120,11 +121,12 @@ func reset():
 # =========================================================
 # GESTIONE SCELTA DEL GIOCATORE
 # =========================================================
-# action_key identifica il tipo di risposta scelta dal giocatore.
+# `action_key` (es. "compliment", "threaten") identifica la scelta.
+# Questa funzione viene chiamata da Game.gd quando un pulsante di dialogo viene premuto.
 
 func handle_choice(action_key: String):
 
-	# Se il giocatore decide di attaccare
+	# Se il giocatore decide di attaccare, il dialogo fallisce immediatamente.
 	if action_key == "attack":
 		_fail_dialogue()
 		return
@@ -132,28 +134,28 @@ func handle_choice(action_key: String):
 	var mood_change = 0
 	var response_text = ""
 
-	# Determina l'effetto della scelta sull'umore
+	# Determina l'effetto della scelta sull'umore dell'entità.
 	match action_key:
 
 		"compliment":
 			mood_change = 15
-			response_text = "L'entità sembra apprezzare il gesto."
+			response_text = tr("dialogue_res_good")
 
 		"threaten":
 			mood_change = -20
-			response_text = "L'entità non sembra gradire il tuo tono."
+			response_text = tr("dialogue_res_bad")
 
 	# Aggiorna l'umore dell'entità
-	# clamp evita che superi i limiti
+	# `clamp` evita che l'umore superi i limiti definiti (-50, 50).
 	current_mood = clamp(current_mood + mood_change, -50, 50)
 
-	# Aggiorna il testo della UI
+	# Richiede alla UI di mostrare il risultato dell'azione.
 	text_requested.emit(response_text)
 
-	# Aggiorna le statistiche visibili
+	# Notifica la UI di aggiornare le statistiche (es. il valore dell'umore).
 	stats_updated.emit()
 
-	# Pausa narrativa
+	# Pausa narrativa per dare tempo di leggere.
 	await get_tree().create_timer(1.5).timeout
 
 	# Controlla se il dialogo è finito
@@ -163,17 +165,17 @@ func handle_choice(action_key: String):
 # =========================================================
 # PRESENTAZIONE DELLE SCELTE
 # =========================================================
-# Mostra le opzioni disponibili al giocatore.
+# Prepara e richiede alla UI di mostrare le opzioni disponibili al giocatore.
 
 func _present_choices():
 
-	text_requested.emit("Umore attuale: %d. Cosa dici?" % current_mood)
+	text_requested.emit(tr("dialogue_mood_status") % current_mood)
 
-	# Ogni elemento rappresenta un pulsante
+	# Ogni dizionario nell'array rappresenta un pulsante che Game.gd dovrà creare.
 	var choices = [
-		{"text": "Fai un complimento", "action": "compliment"},
-		{"text": "Minaccia", "action": "threaten"},
-		{"text": "Basta parlare, attacca!", "action": "attack"}
+		{"text": "dialogue_opt_compliment", "action": "compliment"},
+		{"text": "dialogue_opt_threaten", "action": "threaten"},
+		{"text": "dialogue_opt_attack", "action": "attack"}
 	]
 
 	choices_requested.emit(choices)
@@ -182,20 +184,20 @@ func _present_choices():
 # =========================================================
 # CONTROLLO STATO DEL DIALOGO
 # =========================================================
-# Determina se il dialogo:
-# - continua
-# - ha successo
-# - fallisce
+# Funzione chiamata dopo ogni azione del giocatore per determinare se il dialogo:
+# - continua (mostrando nuove scelte)
+# - ha successo (raggiunto l'obiettivo di umore)
+# - fallisce (umore troppo basso)
 
 func _check_status():
 
-	# Successo del dialogo
+	# CONDIZIONE DI SUCCESSO: umore >= 30
 	if current_mood >= 30:
 
 		is_active = false
 
 		text_requested.emit(
-			"Sei riuscito a convincere %s %s! Ti lascia passare in pace."
+			tr("dialogue_success_msg")
 			% [_entity_pronoun, _entity_name]
 		)
 
@@ -203,12 +205,12 @@ func _check_status():
 
 		dialogue_finished.emit(_victory_scene)
 
-	# Fallimento del dialogo
+	# CONDIZIONE DI FALLIMENTO: umore <= -15
 	elif current_mood <= -15:
 
 		_fail_dialogue()
 
-	# Dialogo ancora in corso
+	# Il dialogo continua: ripresenta le scelte.
 	else:
 
 		_present_choices()
@@ -217,14 +219,14 @@ func _check_status():
 # =========================================================
 # FALLIMENTO DEL DIALOGO
 # =========================================================
-# Porta generalmente a un combattimento.
+# Funzione helper che gestisce la sequenza di fallimento.
 
 func _fail_dialogue():
 
 	is_active = false
 
 	text_requested.emit(
-		"Hai fatto infuriare %s %s! Si prepara a combattere."
+		tr("dialogue_fail_msg")
 		% [_entity_pronoun, _entity_name]
 	)
 

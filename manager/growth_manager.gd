@@ -1,19 +1,36 @@
+# =========================================================
+# GROWTH MANAGER
+# =========================================================
+# Gestisce la crescita e il potenziamento del personaggio.
+#
+# Funzionalità principali:
+# - Calcola l'energia (XP) ottenuta dai nemici sconfitti.
+# - Gestisce un pool di "Energia disponibile" da spendere.
+# - Permette di aumentare permanentemente le statistiche massime (HP, MP, ecc.).
+#
+# Questo manager viene attivato da Game.gd dopo una vittoria in combattimento
+# (vedi `_check_victory` in CombatManager).
+
 class_name GrowthManager
 extends Node
 
+# Riferimento al gioco principale.
+# Iniettato da Game.gd in _ready().
 var game
 
 # Energia accumulata pronta per essere distribuita
 var available_energy: int = 0
 
-# Calcola quanta energia rilascia un nemico (Vita + Magia del nemico)
+# Calcola quanta energia rilascia un nemico sconfitto.
+# La ricompensa è basata sulla somma delle statistiche del nemico (es. Vita + Magia).
 func calculate_reward(entity_id: String) -> int:
 	var entity = game.entity_data.get(entity_id)
 	
 	if entity == null:
 		push_warning(tr("warn_growth_entity_not_found") % entity_id)
 		return 0
-		
+	
+	# Calcola il valore totale delle statistiche del nemico
 	var reward_base = 0.0 # Usiamo float per i calcoli intermedi
 	
 	if entity.has("energy"):
@@ -45,29 +62,19 @@ func upgrade_stat(stat_type: String):
 		
 	available_energy -= 1
 	
-	var upgraded = false
-	match stat_type:
-		"life":
-			game.max_health += 1
-			game.health += 1 # Cura anche di 1 quando potenzi
-			upgraded = true
-		"magic":
-			game.max_mana += 1
-			game.mana += 1
-			upgraded = true
-		"mood":
-			game.max_mood += 1
-			game.mood += 1
-			upgraded = true
+	# 1. Aumenta il valore MASSIMO della statistica
+	var current_max = game.player_max_energy.get(stat_type, 0)
+	game.player_max_energy[stat_type] = current_max + 1
+	
+	# 2. Aumenta anche il valore ATTUALE (cura/ripristino parziale)
+	# Usa modify_player_energy per gestire clamp e logiche specifiche
+	game.modify_player_energy(stat_type, 1)
 			
-	if not upgraded:
-		available_energy += 1 # Restituisce il punto se lo stat non è implementato
-		return
-
 	game.update_stats() # Aggiorna le statistiche del giocatore (HP/MP)
 
 	# Se l'energia è esaurita, procedi. Altrimenti, aggiorna il menu.
 	if available_energy <= 0:
 		game.show_scene(game.current_victory_scene)
 	else:
+		# Aggiorna l'interfaccia per mostrare la nuova energia disponibile
 		game._update_growth_menu()

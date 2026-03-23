@@ -1,68 +1,53 @@
+# =========================================================
+# ITEM MANAGER
+# =========================================================
+# Gestisce tutte le operazioni relative agli oggetti:
+# - Recupero di nomi e icone per la UI.
+# - Calcolo del danno del giocatore in base all'equipaggiamento.
+# - Logica per l'utilizzo di oggetti consumabili (es. pozioni).
+#
+# Funziona come un "servizio" per gli altri manager e per Game.gd,
+# centralizzando la logica degli oggetti in un unico posto.
+
 extends Node
 
-# ---------------------------------------------------------
-# RIFERIMENTO AL GAME
-# ---------------------------------------------------------
-
-# Riferimento alla classe principale Game.
-# Viene assegnato in Game._ready() con:
-# item_manager.game = self
-#
-# Serve per accedere a:
-# - game.inventory   -> inventario del giocatore
-# - game.item_data   -> database degli oggetti caricato dal JSON
-# - game.health      -> salute del giocatore
-# - game.tr()        -> sistema di traduzione
+# Riferimento al gioco principale.
+# Iniettato da Game.gd in _ready().
+# Serve per accedere a dati globali come:
+# - game.equipment: Oggetti equipaggiati.
+# - game.item_data: Database degli oggetti caricato da JSON.
+# - game.health / game.max_health: Statistiche del giocatore.
+# - game.tr(): Sistema di traduzione.
 var game: Game
 
 
-# ---------------------------------------------------------
-# NOME OGGETTO
-# ---------------------------------------------------------
+# =========================================================
+# FUNZIONI HELPER (GETTERS)
+# =========================================================
 
-# Restituisce il nome tradotto di un oggetto dato il suo ID.
-# Gli ID degli oggetti provengono da:
-# game.inventory
-#
-# Il nome vero dell'oggetto è salvato nel JSON item_data
-# come chiave di traduzione.
+# Restituisce il nome localizzato di un oggetto dato il suo ID.
+# Esempio: "pozione" -> "item_potion" (dal JSON) -> "Pozione" (da it.json).
 func get_item_name(item_id: String) -> String:
 	
-	# Se l'oggetto non esiste nel database
+	# Se l'oggetto non esiste nel database, restituisce l'ID grezzo.
 	if not game.item_data.has(item_id):
 		return item_id
 	
-	# Ottiene la chiave di traduzione
-	# esempio: "item_potion"
+	# Ottiene la chiave di traduzione (es. "item_potion").
 	var key = game.item_data[item_id].get("name", item_id)
 	
-	# Usa il sistema di traduzione del Game
+	# Usa il sistema di traduzione globale.
 	return game.tr(key)
 
-
-# ---------------------------------------------------------
-# ICONA OGGETTO
-# ---------------------------------------------------------
-
+# Restituisce l'icona (emoji o percorso) di un oggetto.
 func get_item_icon(item_id: String) -> String:
 	if game.item_data.has(item_id):
 		return game.item_data[item_id].get("icon", "")
 	return ""
 
-
-# ---------------------------------------------------------
-# RICERCA CONSUMABILI
-# ---------------------------------------------------------
-
-# Cerca nell'inventario del giocatore il primo oggetto
-# che possiede la proprietà "consumable".
-#
-# Utile per azioni automatiche come:
-# "usa la prima pozione disponibile".
-#
-# Restituisce:
-# - item_id se trovato
-# - "" se nessun consumabile è presente
+# Cerca nell'inventario del giocatore il primo oggetto che ha la proprietà
+# `"consumable": true` nel file items.json.
+# Utile per azioni automatiche come "Usa Oggetto" in combattimento.
 func get_first_consumable() -> String:
 	
 	for item_id in game.inventory:
@@ -72,30 +57,23 @@ func get_first_consumable() -> String:
 	return ""
 
 
-# ---------------------------------------------------------
-# CALCOLO DANNO GIOCATORE
-# ---------------------------------------------------------
+# =========================================================
+# LOGICA DI GIOCO
+# =========================================================
 
-# Determina il danno del giocatore in base alle armi
-# presenti nell'inventario.
+# Calcola il danno fisico del giocatore per un attacco.
+# 1. Controlla le armi equipaggiate nelle mani.
+# 2. Se ci sono più armi, sceglie la "migliore" (dado più alto, poi qualità).
+# 3. Se non ci sono armi, usa il danno base dei pugni (d2).
+# 4. Calcola il danno finale sommando il tiro del dado al bonus di qualità.
 #
-# Ogni arma può avere nel JSON la proprietà:
-# "damage"
-#
-# Il valore rappresenta il dado massimo di danno.
-#
-# Esempio:
-# sword -> damage: 6  (d6)
-#
-# Se il giocatore non ha armi usa il danno base:
-# pugni -> d2
-#
-# Restituisce:
-# [danno_totale, dado_massimo, bonus_qualità, tipo_danno]
+# Restituisce un Array:
+# [danno_totale, dado_massimo, bonus_qualità, tipo_danno, nome_arma]
 func get_player_damage() -> Array:
 	
-	var damage_die = 2 # danno base (pugni)
-	var damage_quality = 0 # bonus fisso base
+	# Valori di default (attacco a mani nude)
+	var damage_die = 2 # d2
+	var damage_quality = 0
 	var damage_type = "" # tipo di danno (es. "taglio"), vuoto per default
 	var damage_source = game.tr("weapon_fists") # Fonte del danno (default: Pugni)
 	
@@ -138,19 +116,11 @@ func get_player_damage() -> Array:
 	return [total_damage, damage_die, damage_quality, damage_type, damage_source]
 
 
-# ---------------------------------------------------------
-# UTILIZZO OGGETTO
-# ---------------------------------------------------------
-
-# Applica gli effetti di un oggetto.
-#
-# Attualmente supporta:
-# - cura (heal)
-#
-# Se l'oggetto è consumabile viene rimosso
-# dall'inventario del giocatore.
-#
-# Restituisce una stringa da mostrare nel testo di gioco.
+# Applica gli effetti di un oggetto (es. una pozione).
+# - Legge le proprietà dell'oggetto da `item_data`.
+# - Applica l'effetto (es. cura).
+# - Se l'oggetto è consumabile, lo rimuove dall'inventario.
+# - Restituisce una stringa di feedback per la UI.
 func use_item(item_id: String) -> String:
 	
 	if not game.item_data.has(item_id):
@@ -170,10 +140,9 @@ func use_item(item_id: String) -> String:
 		var quality_bonus = int(item_props.get("quality", 0))
 		var total_heal = heal_amount + quality_bonus
 		
-		# Cura il giocatore senza superare il limite
-		# (in Game la salute iniziale è 10)
-		game.health = min(game.health + total_heal, 10)
-		
+		# Cura il giocatore senza superare la sua salute massima.
+		# NOTA: `game.health` è una proprietà che chiama `modify_player_energy`.
+		game.health += total_heal
 		
 		# Se l'oggetto è consumabile lo rimuoviamo
 		if item_props.get("consumable", false):

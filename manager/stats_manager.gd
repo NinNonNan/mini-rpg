@@ -1,9 +1,22 @@
+# =========================================================
+# STATS MANAGER
+# =========================================================
+# Gestisce il menu di configurazione del personaggio.
+#
+# Funzionalità principali:
+# - Visualizzazione e ordinamento delle statistiche (UI dinamica).
+# - Navigazione dell'inventario.
+# - Gestione dell'equipaggiamento (spostamento oggetti Zaino <-> Slot).
+#
+# Questo manager crea e distrugge la propria interfaccia (popup) su richiesta.
+
 class_name StatsManager
 extends Control
 
+# Riferimento al gioco principale.
 var game: Game
 
-# Container per la finestra di configurazione
+# Riferimenti ai nodi UI generati dinamicamente
 var config_panel: PanelContainer
 var items_container: VBoxContainer
 
@@ -16,6 +29,7 @@ func _ready():
 	top_level = true
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+# Apre il menu di configurazione e mette in pausa le interazioni di gioco.
 func open_config_menu():
 	if not game: return
 	
@@ -24,6 +38,7 @@ func open_config_menu():
 	# Disabilita le scelte nel gioco mentre il menu è aperto
 	game.disable_choices()
 
+# Chiude il menu, distrugge l'interfaccia e riprende il gioco.
 func close_config_menu():
 	visible = false
 	if config_panel:
@@ -37,6 +52,7 @@ func close_config_menu():
 	# (game.update_stats() lo fa già, ma utile per sicurezza)
 	game.enable_choices()
 
+# Costruisce l'intera interfaccia utente via codice.
 func _build_ui():
 	# Pulisce eventuale UI precedente
 	if config_panel: config_panel.queue_free()
@@ -69,7 +85,7 @@ func _build_ui():
 	# --- TAB CONTAINER ---
 	var tabs = TabContainer.new()
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tabs.add_theme_font_size_override("font_size", 20)
+	_apply_font(tabs, 20)
 	main_vbox.add_child(tabs)
 	
 	# -- TAB 1: Statistiche --
@@ -94,9 +110,15 @@ func _build_ui():
 	close_btn.pressed.connect(close_config_menu)
 	main_vbox.add_child(close_btn)
 
-func _apply_font(node: Control, size: int):
-	node.add_theme_font_size_override("font_size", size)
+# Applica il font globale e la dimensione specificata a un controllo.
+func _apply_font(node: Control, font_size: int):
+	var font = load("res://fonts/freecam v2.ttf")
+	if font:
+		node.add_theme_font_override("font", font)
+	node.add_theme_font_size_override("font_size", font_size)
 
+# Aggiorna la lista delle statistiche nel primo tab.
+# Permette di riordinare le stat visualizzate nell'HUD principale.
 func _refresh_stats_list():
 	if not items_container: return
 	for child in items_container.get_children():
@@ -154,6 +176,7 @@ func _refresh_stats_list():
 		btn_down.pressed.connect(_move_item.bind(i, 1))
 		row.add_child(btn_down)
 
+# Gestisce lo spostamento su/giù di una statistica nella lista.
 func _move_item(index: int, direction: int):
 	var energy_defs: Array = game.story_data.get("player", {}).get("energy", [])
 	
@@ -178,8 +201,11 @@ func _move_item(index: int, direction: int):
 	# Ridisegna la lista
 	_refresh_stats_list()
 
+# =========================================================
 # --- GESTIONE INVENTARIO UI ---
+# =========================================================
 
+# Costruisce il contenuto del tab Inventario/Equipaggiamento.
 func _build_inventory_tab(container: VBoxContainer):
 	# Pulisce contenuto
 	for c in container.get_children():
@@ -270,6 +296,7 @@ func _build_inventory_tab(container: VBoxContainer):
 			btn_equip.pressed.connect(_show_slot_selection.bind(item_id, container))
 			row.add_child(btn_equip)
 
+# Mostra la schermata di selezione dello slot dove equipaggiare l'oggetto.
 func _show_slot_selection(item_id: String, container: VBoxContainer):
 	# Svuota il container per mostrare solo la selezione slot
 	for c in container.get_children():

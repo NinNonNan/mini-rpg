@@ -1,3 +1,17 @@
+# =========================================================
+# QTE MANAGER (Quick Time Event)
+# =========================================================
+# Gestisce i minigiochi di tempismo per il combattimento.
+#
+# Funzionalità:
+# - Crea una barra visiva sovrapposta all'interfaccia.
+# - Muove un cursore oscillante.
+# - Rileva il tempismo del giocatore (click/input).
+# - Restituisce un valore normalizzato (0.0 - 1.0) dove 0.5 è "Perfetto".
+#
+# Utilizzato principalmente per determinare il moltiplicatore di danno
+# degli attacchi fisici del giocatore.
+
 class_name QTE
 extends Control
 
@@ -16,6 +30,7 @@ var direction = 1
 var time: float = 0.0
 
 func _ready():
+	# Inizializzazione grafica procedurale (senza file .tscn)
 	# Imposta la barra
 	bar.size = Vector2(400, 50)
 	bar.position = Vector2(200, 200)
@@ -40,10 +55,12 @@ func _ready():
 
 	hide() # QTE nascosto di default
 
+# Avvia il minigioco.
+# - target_control: Il pulsante su cui sovrapporre la barra (es. il pulsante "Attacca").
+# - speed_factor: Moltiplicatore di velocità (più alto = più difficile).
 func start(target_control: Control = null, speed_factor: float = 1.0):
 	current_speed = base_speed * speed_factor
 	if target_control:
-		# Sgancia il QTE da eventuali layout automatici o ancore del genitore
 		set_anchors_preset(Control.PRESET_TOP_LEFT)
 		custom_minimum_size = Vector2.ZERO
 		
@@ -69,6 +86,7 @@ func start(target_control: Control = null, speed_factor: float = 1.0):
 	time = -PI / 2
 	cursor.position.x = bar.position.x
 
+# Ferma il minigioco e nasconde l'interfaccia.
 func stop():
 	active = false
 	hide()
@@ -77,6 +95,7 @@ func _process(delta):
 	if not active:
 		return
 	
+	# Calcolo movimento oscillatorio (onda sinusoidale)
 	var max_dist = bar.size.x - cursor.size.x
 	var amplitude = max_dist / 2.0
 	var center_x = bar.position.x + amplitude
@@ -87,11 +106,12 @@ func _process(delta):
 	time += delta * angular_speed
 	cursor.position.x = center_x + amplitude * sin(time)
 
-	# Aggiorna il colore della barra: Rosso (Mancato) -> Giallo (Colpito) -> Verde (Perfetto)
+	# Aggiorna visivamente il colore della barra in base alla posizione del cursore
+	# Rosso (Mancato) -> Giallo (Colpito) -> Verde (Perfetto)
 	var progress = get_qte_value()
 	var dist_from_center = abs(progress - 0.5) # 0.0 al centro, 0.5 agli estremi
 
-	# Le soglie corrispondono a quelle in Game.gd per i risultati del QTE
+	# Le soglie devono corrispondere a quelle in Game.gd (_on_qte_finished)
 	var perfect_threshold = 0.05 # (0.5 - 0.45)
 	var good_threshold = 0.2 # (0.5 - 0.3)
 
@@ -123,11 +143,14 @@ func _on_bar_gui_input(event):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		confirm_hit()
 
+# Conferma il risultato e invia il segnale
 func confirm_hit():
 	var value = get_qte_value()
 	qte_finished.emit(value)
 	stop()
 
+# Restituisce la posizione normalizzata del cursore (0.0 = sinistra, 1.0 = destra)
+# 0.5 rappresenta il centro esatto.
 func get_qte_value() -> float:
 	var min_x = bar.position.x
 	var max_x = bar.position.x + bar.size.x - cursor.size.x

@@ -1,3 +1,14 @@
+# =========================================================
+# RUNE MANAGER
+# =========================================================
+# Gestisce il sistema di magia basato sulle rune.
+#
+# Funzionalità principali:
+# - Minigioco di input sequenziale (Quick Time Event mnemonico).
+# - Gestione delle combo: più incantesimi lanciati in sequenza rapida.
+# - Calcolo avanzato del danno: somma potenze dello stesso tipo e annulla opposti.
+# - Integrazione con l'interfaccia utente dedicata (sovrapposta).
+
 extends Control
 
 # NOTA IMPORTANTE:
@@ -5,8 +16,6 @@ extends Control
 # Usa sempre tr("chiave_json") e definisci la chiave corrispondente nel file data/it.json.
 
 # Segnali verso il sistema di gioco/combattimento
-signal spell_cast_success(spell_id, final_power, cost, type)
-signal spell_cast_failed(reason)
 signal request_target_selection(spell_data)
 signal combo_finished(total_spells)
 
@@ -15,7 +24,8 @@ const MAX_COMBO_CHAIN = 7
 const PERFECT_TIME_THRESHOLD_MS = 2500 # Sotto i 2.5s è "Perfetto" -> Combo
 const MAX_TIME_FOR_MULTIPLIER_MS = 5000 # Sopra i 5s il moltiplicatore è 1.0x
 # const COST_SCALING_FACTOR = 1.5 # Il costo aumenta del 50% per ogni spell nella catena
-const COST_SCALING_FACTOR = 0.75 # Il costo diminuisce del 25% per ogni spell nella catena
+# Il costo diminuisce del 25% per ogni spell nella catena (incentiva le combo lunghe)
+const COST_SCALING_FACTOR = 0.75
 
 # Variabili di Stato
 var rune_data = {}
@@ -34,6 +44,7 @@ var accumulated_spells = []
 
 
 func _ready():
+	# Caricamento dati e configurazione iniziale UI
 	_load_rune_data()
 	hide()
 	# Configurazione font:
@@ -66,17 +77,21 @@ func _load_rune_data():
 	else:
 		push_error(tr("error_rune_file_not_found"))
 	
-	var story_file = FileAccess.open("res://data/story.json", FileAccess.READ)
-	if story_file:
+	var defs_file = FileAccess.open("res://data/definitions.json", FileAccess.READ)
+	if defs_file:
 		var json = JSON.new()
-		var error = json.parse(story_file.get_as_text())
+		var error = json.parse(defs_file.get_as_text())
 		if error == OK:
 			damage_types_data = json.data.get("damage_types", {})
 	else:
-		push_error(tr("error_story_file_not_found_rune"))
+		push_error(tr("error_definitions_file_not_found_rune"))
 
 # Metodo pubblico per avviare il manager
 func start_rune_casting():
+	# =========================================================
+	# GESTIONE LAYOUT
+	# =========================================================
+	
 	# Soluzione pulita per il posizionamento:
 	# 1. Rendi il pannello "top_level" per sganciarlo dal layout del genitore.
 	#    Questo fa sì che si posizioni rispetto all'intera finestra di gioco.
@@ -95,6 +110,8 @@ func start_rune_casting():
 	accumulated_spells.clear()
 	_prepare_round(tr("rune_prompt_start"))
 
+# Prepara un nuovo round del minigioco (resetta input e mescola le rune)
+# prompt_text: Messaggio da mostrare (es. "Seleziona 3 Rune!")
 func _prepare_round(prompt_text: String) -> void:
 	current_sequence.clear()
 	current_icons.clear()
@@ -134,6 +151,7 @@ func _prepare_round(prompt_text: String) -> void:
 	# Ora che la griglia è di nuovo piena, la rendiamo di nuovo visibile.
 	grid_container.show()
 
+# Callback attivata alla pressione di un pulsante runa
 func _on_rune_pressed(rune_id: String, btn_ref: Button):
 	# Aggiunge un feedback aptico (vibrazione) al tocco.
 	Input.vibrate_handheld(50) # 50 millisecondi è una vibrazione breve e netta.
@@ -160,6 +178,7 @@ func _on_rune_pressed(rune_id: String, btn_ref: Button):
 	if current_sequence.size() == 3:
 		_evaluate_spell_attempt()
 
+# Valuta se la sequenza inserita corrisponde a un incantesimo valido
 func _evaluate_spell_attempt():
 	var end_time = Time.get_ticks_msec()
 	var time_taken = end_time - start_time_ms
@@ -174,6 +193,7 @@ func _evaluate_spell_attempt():
 			break
 	
 	if found_spell:
+		# Successo! Calcola bonus e verifica combo
 		_process_success(found_spell, time_taken)
 	else:
 		# Fallimento
@@ -184,6 +204,7 @@ func _evaluate_spell_attempt():
 		await get_tree().create_timer(1.0).timeout
 		_end_session()
 
+# Elabora un incantesimo lanciato con successo
 func _process_success(spell, time_taken_ms):
 	# 1. Calcolo Moltiplicatore Velocità
 	# Più veloce = più potenza.
@@ -222,6 +243,9 @@ func _process_success(spell, time_taken_ms):
 		await get_tree().create_timer(1.0).timeout
 		_end_session()
 
+# Termina la sessione di lancio e calcola il risultato finale aggregato
+# Questa funzione è il cuore del sistema di calcolo danni magico.
+# Unisce tutti gli incantesimi lanciati nella combo in un unico "super-spell".
 func _end_session():
 	is_active = false
 	hide()
@@ -295,7 +319,8 @@ func _end_session():
 
 		# 4. Crea l'incantesimo aggregato
 		var aggregated_spell = {
-			"id": "rune_combo",
+			"id": "rune_combo", # ID generico per il CombatManager
+			# Nome mostrato nel log (es. "Combo Runica")
 			"name": "spell_combo_runic",
 			"power": total_power,
 			"cost": total_cost,
@@ -304,6 +329,7 @@ func _end_session():
 
 		if OS.is_debug_build():
 			print(tr("debug_rune_request_target") % str(aggregated_spell))
+		# Invia i dati al Game/CombatManager per la selezione del bersaglio e l'applicazione
 		request_target_selection.emit(aggregated_spell)
 	else:
 		# Emettiamo combo_finished solo se non ci sono spell da lanciare (fallimento)

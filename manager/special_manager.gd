@@ -1,65 +1,93 @@
+# =========================================================
+# SPECIAL MANAGER
+# =========================================================
+# Gestisce le abilità speciali (Magie) del giocatore.
+#
+# Funzionalità principali:
+# - Recupero dati delle magie da definitions.json (via story_data).
+# - Verifica del costo in Mana (MP).
+# - Esecuzione dell'effetto (Danno elementale o Cura).
+# - Calcolo delle interazioni elementali (Debolezze/Affinità).
+#
+# A differenza del RuneManager (che è un minigioco), questo manager
+# gestisce le abilità attivabili direttamente da menu.
+
 class_name SpecialManager
 extends Node
 
-var game
+# Riferimento al gioco principale.
+# Iniettato da Game.gd in _ready().
+var game: Game
 
-# Proprietà calcolata per compatibilità con CombatManager
+# Proprietà calcolata per ottenere il dizionario delle magie.
+# Recupera i dati da game.story_data["spells"].
 var spells: Dictionary:
 	get:
 		if game:
-			# Fix: Usa get() per accesso sicuro. Supporta 'story_data' o 'story' come fallback.
+			# Tenta di recuperare i dati unificati (story_data contiene anche definitions.json)
 			var data = game.get("story_data")
+			# Fallback per compatibilità con vecchie versioni
 			if not data:
 				data = game.get("story")
+			
 			if data:
 				return data.get("spells", {})
 		return {}
 
-# Helper per ottenere i dati di una magia in modo sicuro
+# =========================================================
+# HELPER
+# =========================================================
+
+# Restituisce il dizionario dati di una specifica magia.
 func get_spell_data(spell_id: String) -> Dictionary:
 	return spells.get(spell_id, {})
 
-# Verifica se il giocatore ha abbastanza mana
+# Verifica se il giocatore ha abbastanza mana per lanciare la magia.
+# Chiamato dalla UI prima di abilitare il pulsante o eseguire l'azione.
 func has_enough_mana(spell_id: String) -> bool:
 	var spell = get_spell_data(spell_id)
 	if not spell: return false
-	# CRITICITÀ RISOLTA: Legge il valore "magic" dalla nuova struttura energy
+	
+	# Recupera il valore attuale di MP tramite l'interfaccia di Game
 	var current_magic = game.get_player_energy_value("magic")
 	return current_magic >= spell.cost
 
-# Esegue l'abilità e restituisce il testo descrittivo dell'effetto
+
+# =========================================================
+# ESECUZIONE MAGIA
+# =========================================================
+
+# Esegue l'abilità, consuma risorse e applica gli effetti.
+# Restituisce una stringa descrittiva (già tradotta) per il log di gioco.
 func use_spell(spell_id: String, target_entity_id: String) -> String:
 	var spell = get_spell_data(spell_id)
 	if not spell: return ""
 	
-	# Consuma Mana
-	# CRITICITÀ RISOLTA: Modifica il valore "magic" usando una funzione helper
+	# 1. CONSUMO MANA
+	# Modifica l'energia "magic" sottraendo il costo.
 	game.modify_player_energy("magic", -spell.cost)
 	
-	# Logica di cura
+	# 2. LOGICA DI CURA DIRETTA (es. Pozione/Incantesimo "Heal")
+	# Se la magia ha la proprietà "heal" definita nel JSON.
 	if spell.has("heal"):
 		var amount = spell.heal
-		# CRITICITÀ RISOLTA: Modifica il valore "life" usando una funzione helper
-		# Nota: la funzione helper dovrebbe gestire il clamp al valore massimo.
+		# Cura il giocatore
 		game.modify_player_energy("life", amount)
 		return game.tr("spell_cast_heal") % [game.tr(spell.name), amount]
 	
-	# Logica di danno
+	# 3. LOGICA DI DANNO / EFFETTO ELEMENTALE
 	elif spell.has("damage"):
 		var amount = spell.damage
 		var type = spell.type
 		
-		# Calcolo resistenze tramite dati globali
+		# Recupera i dati del bersaglio per calcolare resistenze
 		var entity_def = {}
 		
 		if target_entity_id == "player":
 			entity_def = game.story_data.get("player", {})
 		else:
-			# Fix: Accesso sicuro a entity_data (o fallback su story.entities)
-			var e_data = game.get("entity_data")
-			if not e_data and game.get("story"):
-				e_data = game.get("story").get("entities")
-				
+			# Recupera i dati del nemico da entity_data
+			var e_data = game.entity_data
 			if e_data:
 				entity_def = e_data.get(target_entity_id, {})
 			
@@ -69,27 +97,36 @@ func use_spell(spell_id: String, target_entity_id: String) -> String:
 		
 		var multiplier_msg = ""
 		
-		# Controlla prima l'affinità, che inverte il danno in cura
+		# --- CALCOLO MOLTIPLICATORI ---
+		
+		# A. AFFINITÀ -> Il danno diventa CURA
 		if type in affinities:
 			amount *= -1 # Inverte il danno in cura
 			multiplier_msg = game.tr("combat_damage_affinity") % type
+			
+		# B. IMMUNITÀ -> Il danno diventa 0
 		elif type in immunities:
 			amount = 0
 			multiplier_msg = game.tr("combat_damage_immunity") % type
+			
+		# C. DEBOLEZZA -> Il danno raddoppia
 		elif type in weaknesses:
 			amount *= 2
 			multiplier_msg = game.tr("combat_damage_weakness")
 			
-		# Applica danno al manager di combattimento
-		# CRITICITÀ RISOLTA: Comunica al CombatManager di modificare l'energia del nemico
+		# --- APPLICAZIONE EFFETTO ---
+		
 		if target_entity_id == "player":
-			# amount positivo = danno, negativo = cura (affinità)
+			# Se il bersaglio è il giocatore, sottraiamo il danno (se negativo diventa cura)
 			game.modify_player_energy("life", -amount)
 		elif game.combat_manager:
+			# Se il bersaglio è un nemico, deleghiamo al CombatManager
 			game.combat_manager.modify_current_entity_energy("life", -amount)
 			
+		# --- GENERAZIONE MESSAGGIO ---
+		
 		var text = ""
-		# Se stiamo curando il giocatore tramite affinità, usiamo il messaggio di cura per chiarezza
+		# Caso speciale: Cura su se stessi tramite affinità
 		if target_entity_id == "player" and amount < 0:
 			text = game.tr("spell_cast_heal") % [game.tr(spell.name), abs(amount)]
 		else:

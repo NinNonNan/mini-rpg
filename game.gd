@@ -87,21 +87,11 @@ func _ready():
 	if qte:
 		qte.qte_finished.connect(_on_qte_finished)
 	
-	# --- CONFIGURAZIONE GLOBALE FONT ---
-	var font_path = "res://fonts/freecam v2.ttf"
-	if ResourceLoader.exists(font_path):
-		var global_theme = Theme.new()
-		global_theme.default_font = load(font_path)
-		global_theme.default_font_size = 20
-		theme = global_theme
-
 	# Setup Pulsante Long Press per Configurazione (Sopra le stat del player)
 	if player_box_container:
 		var stats_btn = LongPressButton.new()
 		stats_btn.name = "StatsConfigButton"
 		stats_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		stats_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		stats_btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		stats_btn.focus_mode = Control.FOCUS_NONE
 		stats_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 		stats_btn.long_pressed.connect(func():
@@ -127,9 +117,9 @@ func _ready():
 	if not meteo_manager:
 		push_error(tr("error_node_meteo_not_found"))
 	if not rune_manager:
-		push_error(tr("error_rune_manager_node_missing"))
+		push_error("ERRORE: Nodo RuneManager non trovato in $Manager/Rune")
 	if not stats_manager:
-		push_warning(tr("warn_stats_manager_missing"))
+		push_warning("ATTENZIONE: StatsManager non trovato in $Manager/Stats. Aggiungi il nodo per abilitare il menu.")
 
 	# Impostazioni grafica
 	#text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
@@ -147,7 +137,7 @@ func _ready():
 
 	# Connessione RuneManager
 	if rune_manager:
-		rune_manager.spell_cast_success.connect(_on_spell_cast_success)
+		rune_manager.request_target_selection.connect(_on_rune_data_received)
 		rune_manager.combo_finished.connect(_on_rune_combo_finished)
 		
 		# Fix layout: Forza il posizionamento al centro dello schermo
@@ -181,7 +171,16 @@ func _load_story():
 	story_data = json_data
 	story = json_data.get("scenes", {})
 	entity_data = json_data.get("entities", {})
-	damage_types_data = json_data.get("damage_types", {})
+	
+	# Caricamento definizioni (energy_types, damage_types, weather, spells)
+	# ATTENZIONE: Percorso fisso in res://data/. NON MODIFICARE.
+	var definitions_json = StoryLoader.load_json_file("res://data/definitions.json")
+	if definitions_json != null:
+		# Uniamo le definizioni in story_data per mantenere la compatibilità
+		story_data.merge(definitions_json, true)
+		damage_types_data = definitions_json.get("damage_types", {})
+	else:
+		push_error(tr("error_definitions_load"))
 
 	# Caricamento items separato
 	var items_json = StoryLoader.load_json_file("res://data/items.json")
@@ -205,7 +204,8 @@ func _load_translations(lang_code: String = "it"):
 	# ATTENZIONE: Percorso fisso per le traduzioni in res://data/. NON MODIFICARE.
 	var file_path = "res://data/%s.json" % lang_code
 	if not FileAccess.file_exists(file_path):
-		push_error(tr("error_translation_file_not_found") % file_path)
+		# Usa concatenazione per evitare crash se tr() fallisce (restituendo la chiave senza %s)
+		push_error(tr("error_translation_file_not_found") + ": " + file_path)
 		return
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	var content = file.get_as_text()
@@ -222,6 +222,27 @@ func _load_translations(lang_code: String = "it"):
 # --- Stats ---
 func get_player_energy_value(type_id: String) -> int:
 	return player_energy.get(type_id, 0)
+
+# Calcola la % di schivata basata sulle energie "fisiche" attuali.
+# -------------------------------------------------------------------------
+# MECCANICA DI SCHIVATA:
+# La probabilità di evitare un attacco dipende dalla somma delle energie
+# che hanno la proprietà "bonus": "evasion" definita in definitions.json.
+# (Es. Life e Chakra).
+#
+# Formula: (Somma Energie Evasione Attuali) * 2%
+# -------------------------------------------------------------------------
+func get_player_evasion() -> int:
+	var phys_sum = 0
+	var energy_types_def = story_data.get("energy_types", {})
+	
+	for type_id in player_energy.keys():
+		var def = energy_types_def.get(type_id, {})
+		if def.get("bonus") == "evasion":
+			phys_sum += get_player_energy_value(type_id)
+
+	var evasion_chance = phys_sum * 2.0
+	return int(min(evasion_chance, 75)) # Cap massimo al 75%
 
 func modify_player_energy(type_id: String, amount: int):
 	if not player_energy.has(type_id):
@@ -438,15 +459,22 @@ func _on_dialogue_choices_requested(choices):
 			buttons[i].hide()
 
 # --- Gestione Rune ---
+func _on_rune_data_received(spell_data: Dictionary):
+	var spell_id = spell_data.get("id", "rune_spell")
+	var power = int(spell_data.get("power", 0))
+	var cost = int(spell_data.get("cost", 0))
+	var type = spell_data.get("type", "neutral")
+	_on_spell_cast_success(spell_id, power, cost, type)
+
 func _on_spell_cast_success(spell_id, power, cost, type):
-	# Consuma Mana
-	modify_player_energy("magic", -int(cost))
-	
 	# FIX: Se siamo in combattimento, il CombatManager gestisce l'effetto della runa (danni, resistenze, ecc.)
 	# Interrompiamo qui per evitare che Game.gd applichi danni "puri" ignorando le immunità del nemico.
 	if was_in_combat:
 		return
 	
+	# Consuma Mana (Solo se NON siamo in combattimento, altrimenti ci pensa il CombatManager)
+	modify_player_energy("magic", -int(cost))
+
 	var msg = ""
 	if type == "sacro":
 		# Cura il giocatore
@@ -471,7 +499,7 @@ func _on_spell_cast_success(spell_id, power, cost, type):
 
 func _on_rune_combo_finished(total_spells):
 	if total_spells > 0:
-		text.text += "\n\nCombo Rune terminata! Incantesimi totali: %d" % total_spells
+		text.text += tr("rune_combo_end_msg") % total_spells
 
 func _init_death_effects():
 	# 1. Shader Grayscale per l'icona
@@ -487,42 +515,28 @@ func _init_death_effects():
 	grayscale_material = ShaderMaterial.new()
 	grayscale_material.shader = shader
 
-	# 2. Overlay A TUTTO SCHERMO per Game Over
+	# 2. Overlay semitrasparente per il box giocatore
 	death_overlay = ColorRect.new()
-	death_overlay.color = Color(0, 0, 0, 0.85) # Velo nero semitrasparente
-	death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	death_overlay.z_index = 100 # Assicura che sia sopra a tutto (UI compresa)
-	death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP # Blocca i click sotto
+	death_overlay.color = Color(0.2, 0.2, 0.2, 0.5) # Grigio scuro semitrasparente
+	death_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	death_overlay.hide()
 	
-	# Scritta Rossa Grande al centro
-	var label = Label.new()
-	label.text = tr("game_over_title")
-	label.add_theme_color_override("font_color", Color(0.9, 0, 0)) # Rosso sangue
-	label.add_theme_font_size_override("font_size", 80) # Molto grande
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	death_overlay.add_child(label)
-	
-	# Gestione Click per ricominciare
-	death_overlay.gui_input.connect(func(event):
-		if event is InputEventMouseButton and event.pressed:
-			_restart_game()
-	)
-	
-	# Aggiungi direttamente alla radice del gioco per coprire tutto
-	add_child(death_overlay)
+	var player_mc = $UI/VBC_Main/MC_Player
+	if player_mc:
+		player_mc.add_child(death_overlay)
 
 # --- Game Over ---
 func game_over():
 	if death_manager:
 		death_manager.record_player_death()
 	text.text = tr("game_over_text")
-	disable_choices()
+	enable_choices()
 	if combat_manager: combat_manager.current_entity_health = 0
 	if dialogue_manager: dialogue_manager.reset()
-	b1.hide()
+	b1.text = tr("game_over_choice")
+	b1.show()
+	_clear_signals(b1)
+	b1.pressed.connect(_restart_game)
 	b2.hide()
 	b3.hide()
 
@@ -530,19 +544,13 @@ func game_over():
 	# !!! NON RIMUOVERE QUESTE RIGHE !!! Gestiscono il feedback visivo di morte (icona grigia e overlay scuro).
 	if player_icon: player_icon.material = grayscale_material
 	if player_stats: player_stats.material = grayscale_material
-	if death_overlay:
-		death_overlay.modulate.a = 0.0
-		death_overlay.show()
-		var tween = create_tween()
-		tween.set_ease(Tween.EASE_IN)
-		tween.set_trans(Tween.TRANS_CUBIC)
-		tween.tween_property(death_overlay, "modulate:a", 1.0, 0.7)
+	if death_overlay: death_overlay.show()
 
 func _restart_game():
-	# Ricarica i dati iniziali per resettare le statistiche (incluse quelle potenziate)
-	_load_story()
+	health = max_health
+	mana = max_mana
+	mood = max_mood
 	inventory.clear()
-	equipment.clear()
 
 	# Rimuovi effetti visivi morte
 	# !!! NON RIMUOVERE QUESTE RIGHE !!! Ripristinano la grafica normale al riavvio.
@@ -550,7 +558,6 @@ func _restart_game():
 	if player_stats: player_stats.material = null
 	if death_overlay: death_overlay.hide()
 
-	enable_choices()
 	show_scene("start")
 
 func notify_entity_death(entity_id: String):
@@ -616,7 +623,7 @@ func enable_target_selection():
 	text.text = tr("combat_select_target")
 	
 	# Opzione 1: Player
-	b1.text = "Player"
+	b1.text = tr("target_player")
 	b1.show()
 	_clear_signals(b1)
 	b1.pressed.connect(func(): target_clicked.emit("player"))

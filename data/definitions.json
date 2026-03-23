@@ -1,0 +1,39 @@
+{
+	"energy_types": {
+		"life": { "name": "energy_life", "icon": "❤️", "abbreviation": "HP", "bonus": "evasion" },
+		"magic": { "name": "energy_magic", "icon": "✨", "abbreviation": "MP" },
+		"mood": { "name": "energy_mood", "icon": "😊", "abbreviation": "MD" },
+		"chakra": { "name": "energy_chakra", "icon": "🌀", "abbreviation": "CK", "bonus": "evasion" }
+	},
+	"damage_types": {
+		"taglio": {"name": "Taglio","icon": "🗡️"},
+		"fuoco": {"name": "Fuoco","icon": "🔥"},
+		"morso": {"name": "Morso","icon": "🦷"},
+		"sole": {"name": "Sole","icon": "☀️"},
+		"sacro": {"name": "Sacro","icon": "✨"},
+		"graffio": {"name": "Graffio","icon": "🐾"},
+		"artiglio": {"name": "Artiglio","icon": "🐾"}
+	},
+	"weather": {
+		"sun": {
+			"name": "weather_sun",
+			"icon": "☀️"
+		},
+		"rain": {
+			"name": "weather_rain",
+			"icon": "🌧️"
+		},
+		"fog": {
+			"name": "weather_fog",
+			"icon": "🌫️"
+		},
+		"storm": {
+			"name": "weather_storm",
+			"icon": "⛈️"
+		}
+	},
+	"spells": {
+		"fireball": { "name": "spell_fireball", "type": "fuoco", "cost": 3, "damage": 6 },
+		"heal": { "name": "spell_heal", "type": "sacro", "cost": 4, "damage": 5 }
+	}
+}

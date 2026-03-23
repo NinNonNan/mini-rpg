@@ -2,10 +2,14 @@
 # COMBAT MANAGER
 # =========================================================
 # Gestisce tutta la logica del combattimento:
-# - inizializzazione dello scontro
-# - turni giocatore / nemico
-# - analisi del nemico
-# - uso oggetti
+# - Inizializzazione dello scontro (caricamento dati nemico).
+# - Gestione Turni (Giocatore -> Azione -> Nemico -> Giocatore).
+# - Calcolo Danni (Fisici, Magici, Runici).
+# - Gestione Resistenze/Debolezze/Affinità.
+# - Integrazione con QTE (Quick Time Events) per attacchi fisici.
+# - Integrazione con RuneManager per combo magiche.
+# - Analisi del nemico (via EmpathyManager).
+# - Uso oggetti (via ItemManager).
 # - fuga
 # - vittoria o sconfitta
 #
@@ -42,19 +46,20 @@ var game
 # ID dell'entità che stiamo combattendo
 var current_entity_id: String = ""
 
-# Salute attuale dell'entità
+# Salute attuale dell'entità (HP)
 var current_entity_health = 0
 
 # Dati del danno dell'entità (può essere un int o un Array di dizionari)
+# Usato per determinare quanto male fa il nemico quando attacca.
 var current_entity_damage_data = null
 
-# Scena da caricare dopo la vittoria
+# Scena da caricare dopo la vittoria (definita nel JSON della storia)
 var current_victory_scene = ""
 
 # Variabile temporanea per la magia selezionata in attesa di bersaglio
 var pending_spell_id: String = ""
 
-# Variabile temporanea per i dati della combo runica in attesa di bersaglio
+# Variabile temporanea per i dati della combo runica (risultato del RuneManager) in attesa di bersaglio
 var pending_rune_data: Dictionary = {}
 
 
@@ -69,6 +74,8 @@ func start_combat(entity_id: String, victory_scene: String):
 	current_entity_id = entity_id
 	current_victory_scene = victory_scene
 
+	# 1. CARICAMENTO DATI
+	# -------------------
 	# Recuperiamo le statistiche dell'entità dal database
 	var entity_def = game.entity_data.get(entity_id, {})
 
@@ -99,10 +106,12 @@ func modify_current_entity_energy(type_id: String, amount: int):
 	if type_id == "life":
 		current_entity_health += amount
 
+
 # =========================================================
 # CONFIGURAZIONE PULSANTI COMBATTIMENTO
 # =========================================================
 # Imposta i pulsanti disponibili nel turno del giocatore.
+# Questa funzione viene chiamata all'inizio di ogni turno del giocatore.
 
 func show_combat_buttons():
 	# Riabilita i pulsanti (nel caso fossero disabilitati da QTE o altro)
@@ -149,6 +158,7 @@ func show_combat_buttons():
 # =========================================================
 # MENU ABILITÀ
 # =========================================================
+# Gestisce il sottomenu per le abilità speciali (consumano MP).
 
 func open_special_menu():
 	# Controllo di sicurezza: se il manager non è caricato, interrompi per evitare crash
@@ -160,6 +170,8 @@ func open_special_menu():
 	var spell_keys = all_spells.keys()
 	var buttons = [game.b1, game.b2] # Array di pulsanti per le magie, facilmente estendibile
 
+	# 1. POPOLAMENTO DINAMICO
+	# -----------------------
 	# Popola dinamicamente i pulsanti con le magie disponibili
 	for i in range(buttons.size()):
 		var button = buttons[i]
@@ -185,7 +197,10 @@ func open_special_menu():
 	game._clear_signals(game.b3)
 	game.b3.pressed.connect(show_combat_buttons) # Ritorna al menu di combattimento principale
 
-# Fase 1: Preparazione e Selezione Bersaglio
+# FASE 1: PREPARAZIONE LANCIO
+# ---------------------------
+# Verifica il mana e imposta l'interfaccia per la selezione del bersaglio.
+
 func prepare_spell_cast(spell_id: String):
 	# Controllo Mana preventivo
 	if not game.special_manager.has_enough_mana(spell_id):
@@ -221,13 +236,17 @@ func cancel_spell_selection():
 		game.target_clicked.disconnect(_on_target_chosen)
 	open_special_menu()
 
-# Fase 2: Bersaglio Selezionato ed Esecuzione
+# FASE 2: SELEZIONE BERSAGLIO
+# ---------------------------
+# Callback chiamata quando il giocatore clicca su un'icona (Player o Nemico).
+
 func _on_target_chosen(target_type: String):
 	game.disable_target_selection()
 	
 	# Determina l'ID del bersaglio
 	var target_id = ""
 	if target_type == "player":
+		# Target "player" è una keyword speciale riconosciuta dallo SpecialManager
 		target_id = "player"
 	elif target_type == "enemy":
 		target_id = current_entity_id
@@ -240,6 +259,8 @@ func execute_spell(spell_id: String, target_id: String):
 	if OS.is_debug_build():
 		print(game.tr("debug_special_use") % [spell_id, target_id])
 		
+	# Delega l'esecuzione effettiva (calcolo danni/cure/costi) allo SpecialManager.
+	# Lo SpecialManager restituisce una stringa descrittiva dell'effetto.
 	# Esegue la magia
 	game.text.text = game.special_manager.use_spell(spell_id, target_id)
 	game.update_stats()
@@ -314,6 +335,7 @@ func use_item_turn(item_id):
 # =========================================================
 # SISTEMA RUNE
 # =========================================================
+# Gestisce l'integrazione con il minigioco delle rune.
 
 func start_rune_combat():
 	# Verifica che il RuneManager esista nel Game
@@ -332,6 +354,8 @@ func start_rune_combat():
 		# Fallback: passa il turno se qualcosa va storto
 		entity_turn()
 
+# Callback: Il RuneManager ha calcolato la combo e chiede su chi lanciarla.
+# spell_data contiene {power, type, cost, name}
 func _on_rune_target_requested(spell_data):
 	pending_rune_data = spell_data
 	
@@ -372,6 +396,10 @@ func _on_rune_target_chosen(target_type):
 	if target_id != "":
 		_execute_rune_combo(target_id)
 
+# ESECUZIONE COMBO RUNICA
+# -----------------------
+# Applica gli effetti calcolati dal RuneManager al bersaglio scelto.
+# Gestisce manualmente Affinità, Debolezze e Immunità.
 func _execute_rune_combo(target_id):
 	var data = pending_rune_data
 	var power = int(data.get("power", 0))
@@ -438,6 +466,7 @@ func _execute_rune_combo(target_id):
 			msg = game.tr("combat_self_damage") % [spell_name, damage] + msg_extra
 	
 	elif target_id == current_entity_id:
+		# Applica danno al nemico
 		current_entity_health -= damage
 		if current_entity_health < 0: current_entity_health = 0
 		
@@ -464,6 +493,7 @@ func _on_rune_sequence_finished(_total_spells):
 # =========================================================
 # ATTACCO DEL GIOCATORE
 # =========================================================
+# Gestisce l'attacco fisico standard, potenziato dal QTE.
 
 func initiate_attack_qte():
 	# Avvia l'evento QTE per l'attacco del giocatore.
@@ -474,12 +504,14 @@ func initiate_attack_qte():
 func resolve_player_attack(qte_multiplier: float):
 	
 	# Calcolo del danno tramite ItemManager
+	# ItemManager controlla l'equipaggiamento e restituisce il danno base + bonus.
 	var damage_result = game.item_manager.get_player_damage()
 
 	var total_damage = damage_result[0]
 	var damage_die = damage_result[1]
 	var quality = damage_result[2]
 	var damage_type = damage_result[3]
+	# weapon_name serve per il log (es. "Spada" o "Pugni")
 	var weapon_name = damage_result[4]
 	
 	# Applica il moltiplicatore del QTE al danno base
@@ -493,6 +525,8 @@ func resolve_player_attack(qte_multiplier: float):
 	
 	var multiplier_msg = ""
 
+	# CALCOLO MOLTIPLICATORI ELEMENTALI
+	# ---------------------------------
 	# Controllo Debolezze e Immunità
 	if damage_type != "":
 		# Controlla prima l'affinità, che inverte il danno in cura
@@ -579,6 +613,11 @@ func flee_combat():
 # TURNO DEL NEMICO
 # =========================================================
 # Dopo l'azione del giocatore il nemico attacca.
+# Include:
+# 1. Selezione casuale dell'attacco (se il nemico ne ha più di uno).
+# 2. Calcolo del danno (variabile casuale).
+# 3. Check Evasione del giocatore (basato su stats Life+Chakra).
+# 4. Applicazione danno e aggiornamento UI.
 
 func entity_turn():
 
@@ -603,6 +642,19 @@ func entity_turn():
 
 	var damage = randi_range(1, max_damage)
 
+	# --- CONTROLLO SCHIVATA ---
+	var evasion_chance = game.get_player_evasion()
+	# Genera un numero tra 0.0 e 100.0
+	if randf() * 100.0 < float(evasion_chance):
+		game.text.text = game.tr("combat_enemy_miss") % evasion_chance
+		print(game.tr("log_combat_miss") % evasion_chance)
+		await get_tree().create_timer(1.5).timeout
+		show_combat_buttons()
+		return
+	else:
+		print(game.tr("log_combat_hit") % evasion_chance)
+	# --------------------------
+
 	var hp_before = game.health
 	game.health -= damage
 	print(game.tr("log_combat_enemy_attack") % [current_entity_id, attack_type, damage, hp_before, game.health])
@@ -625,6 +677,9 @@ func entity_turn():
 		# Torna il turno del giocatore
 		show_combat_buttons()
 
+# =========================================================
+# CONTROLLO VITTORIA
+# =========================================================
 # Funzione centralizzata per gestire la vittoria e le ricompense
 func _check_victory() -> bool:
 	if current_entity_health <= 0:
