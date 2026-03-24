@@ -9,7 +9,7 @@
 [ext_resource type="Script" uid="uid://c0f4lcycq4hn1" path="res://manager/special_manager.gd" id="6_ryrav"]
 [ext_resource type="Script" uid="uid://686s31eqltii" path="res://manager/growth_manager.gd" id="7_eow3j"]
 [ext_resource type="Script" uid="uid://hgu7c8wn2yv0" path="res://manager/death_manager.gd" id="8_vef74"]
-[ext_resource type="Script" uid="uid://dqpu6red2s7qq" path="res://manager/savegame_manager.gd" id="10_215e1"]
+[ext_resource type="Script" uid="uid://deqpejhstaoul" path="res://manager/save_manager.gd" id="10_215e1"]
 [ext_resource type="Script" uid="uid://cql0pomvglwoj" path="res://manager/qte_manager.gd" id="11_iotsf"]
 [ext_resource type="Script" uid="uid://bdhqckafmw8k5" path="res://manager/meteo_manager.gd" id="11_mfdv2"]
 [ext_resource type="Script" uid="uid://b04gpwp1lwtq4" path="res://manager/rune_manager.gd" id="12_iotsf"]
@@ -206,7 +206,7 @@ script = ExtResource("8_vef74")
 [node name="Meteo" type="Node" parent="Manager" unique_id=146860750]
 script = ExtResource("11_mfdv2")
 
-[node name="SaveGame" type="Node" parent="Manager" unique_id=1253436289]
+[node name="Save" type="Node" parent="Manager" unique_id=1253436289]
 script = ExtResource("10_215e1")
 
 [node name="Special" type="Node" parent="Manager" unique_id=1536375209]

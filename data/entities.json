@@ -1,0 +1,126 @@
+{
+  "player": {
+	"icon": "res://art/player.svg",
+	"energy": [
+	  {
+		"type": "life",
+		"value": 10,
+		"display_order": 1
+	  },
+	  {
+		"type": "magic",
+		"value": 10,
+		"display_order": 2
+	  },
+	  {
+		"type": "mood",
+		"value": 0,
+		"display_order": 3
+	  },
+	  {
+		"type": "chakra",
+		"value": 0,
+		"display_order": 4
+	  }
+	],
+	"affinity": [
+      "sacro"
+	]
+  },
+  "entities": {
+	"wolf": {
+	  "name": "Lupo",
+	  "pronoun": "il",
+	  "icon": "res://art/wolf.svg",
+	  "energy": [
+		{
+		  "type": "life",
+		  "value": 5.0
+		},
+		{
+		  "type": "mood",
+		  "value": 3.0
+		}
+	  ],
+	  "damage": [
+		{
+		  "amount": 2.0,
+		  "type": "morso"
+		},
+		{
+		  "amount": 1.0,
+		  "type": "graffio"
+		}
+	  ],
+	  "affinity": [
+        "sacro"
+	  ],
+	  "weaknesses": []
+	},
+	"dragon": {
+	  "name": "Drago",
+	  "pronoun": "il",
+	  "icon": "res://art/dragon.svg",
+	  "energy": [
+		{
+		  "type": "life",
+		  "value": 8.0
+		},
+		{
+		  "type": "mood",
+		  "value": 2.0
+		}
+	  ],
+	  "damage": [
+		{
+		  "amount": 3.0,
+		  "type": "graffio"
+		},
+		{
+		  "amount": 6.0,
+		  "type": "fuoco"
+		}
+	  ],
+	  "affinity": [
+        "sacro"
+	  ],
+	  "immunities": [
+        "fuoco"
+	  ],
+	  "weaknesses": [
+        "freddo"
+	  ]
+	},
+	"vampire": {
+	  "name": "Vampiro",
+	  "pronoun": "il",
+	  "icon": "res://art/vampire.svg",
+	  "energy": [
+		{
+		  "type": "life",
+		  "value": 10.0
+		},
+		{
+		  "type": "mood",
+		  "value": 10.0
+		}
+	  ],
+	  "damage": [
+		{
+		  "amount": 2.0,
+		  "type": "morso"
+		},
+		{
+		  "amount": 4.0,
+		  "type": "artiglio"
+		}
+	  ],
+	  "affinity": [],
+	  "weaknesses": [
+		"fuoco",
+		"taglio",
+        "sole"
+	  ]
+	}
+  }
+}

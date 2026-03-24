@@ -26,7 +26,10 @@
 	"pozione": {
 		"name": "item_potion",
 		"icon": "🍻",
-		"heal": 5.0,
+		"restore": {
+			"type": "life",
+			"value": 5
+		},
 		"quality": 2.0,
 		"consumable": true,
 		"hands": 1

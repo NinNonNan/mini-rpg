@@ -34,6 +34,7 @@ extends Control
 @onready var meteo_manager = $Manager/Meteo as MeteoManager
 @onready var rune_manager = $Manager/Rune
 @onready var stats_manager = $Manager/Stats # Richiede script StatsManager
+@onready var save_manager = $Manager/Save as SaveManager
 
 # --- Stato del Gioco ---
 var player_energy: Dictionary = {}
@@ -69,7 +70,7 @@ var max_mood: int:
 	set(value): player_max_energy["mood"] = value
 
 # --- Variabili di Flusso ---
-var inventory: Array[String] = []
+var inventory: Array = []
 var current_entity_pronoun: String = ""
 var current_victory_scene: String = ""
 var current_entity_id: String = ""
@@ -135,6 +136,8 @@ func _ready():
 		push_error(tr("error_rune_manager_node_missing"))
 	if not stats_manager:
 		push_warning(tr("warn_stats_manager_missing"))
+	if not save_manager:
+		push_warning("SaveManager non trovato in $Manager/Save")
 
 	# Impostazioni grafica
 	#text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
@@ -148,7 +151,7 @@ func _ready():
 
 	# Iniezione Game nei manager
 	# Fornisce ai manager un riferimento a questo script principale per callback e accesso ai dati
-	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager]:
+	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager]:
 		if mgr:
 			mgr.game = self
 
@@ -176,6 +179,10 @@ func _ready():
 		# Inizializza effetti grafici per la morte
 		# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
 	_init_death_effects()
+	
+	# Tentativo di caricamento partita
+	if save_manager:
+		save_manager.load_game()
 
 	
 	# Avvio scena iniziale
@@ -209,7 +216,23 @@ func _load_story():
 	if items_json != null:
 		item_data = items_json
 	
-	var player_data = json_data.get("player", {})
+	# Carica dati entità (player e nemici) da file separato
+	var entities_json = StoryLoader.load_json_file("res://data/entities.json")
+	var player_data = {}
+
+	if entities_json != null:
+		entity_data = entities_json.get("entities", {})
+		if entities_json.has("player"):
+			player_data = entities_json.get("player", {})
+			# Aggiorna story_data con i dati del player per la UI
+			story_data["player"] = player_data
+	else:
+		push_error("Errore caricamento entities.json!")
+		return
+
+	if player_data.is_empty():
+		player_data = json_data.get("player", {})
+
 	if player_data.has("energy"):
 		player_energy.clear()
 		player_max_energy.clear()
@@ -419,6 +442,10 @@ func show_scene(scene_name):
 	if combat_manager: combat_manager.current_entity_health = 0
 	# Aggiorna il meteo al cambio di scena
 	if meteo_manager: meteo_manager.roll_weather()
+	
+	# Auto-save
+	if save_manager:
+		save_manager.save_game()
 	
 	if dialogue_manager: dialogue_manager.reset()
 	var scene = story[scene_name]
@@ -640,10 +667,11 @@ func game_over():
 
 func _restart_game():
 	# Ripristina lo stato del giocatore per una nuova partita.
-	health = max_health
-	mana = max_mana
-	mood = max_mood
 	inventory.clear()
+	equipment.clear()
+	
+	# Ricarica i dati originali dal JSON per assicurare un reset pulito delle stats
+	_load_story()
 
 	# Rimuovi effetti visivi morte
 	# !!! NON RIMUOVERE QUESTE RIGHE !!! Ripristinano la grafica normale al riavvio.

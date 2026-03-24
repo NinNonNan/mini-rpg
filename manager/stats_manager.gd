@@ -289,12 +289,25 @@ func _build_inventory_tab(container: VBoxContainer):
 			_apply_font(lbl, 20)
 			row.add_child(lbl)
 			
-			var btn_equip = Button.new()
-			btn_equip.text = tr("stats_btn_equip")
-			_apply_font(btn_equip, 20)
-			# Click -> Mostra popup per scegliere slot
-			btn_equip.pressed.connect(_show_slot_selection.bind(item_id, container))
-			row.add_child(btn_equip)
+			# Recupera i dati dell'oggetto per determinarne il tipo (Consumabile o Equipaggiamento)
+			var item_data = game.item_data.get(item_id, {})
+			
+			if item_data.has("restore"):
+				# MECCANICA CONSUMABILI: Se l'oggetto ha dati di ripristino ("restore"), mostriamo "Usa"
+				var btn_use = Button.new()
+				btn_use.text = tr("stats_btn_use")
+				_apply_font(btn_use, 20)
+				# Connette all'azione di utilizzo passando l'ID oggetto e il container per aggiornare la lista
+				btn_use.pressed.connect(_use_item.bind(item_id, container))
+				row.add_child(btn_use)
+			else:
+				# MECCANICA EQUIPAGGIAMENTO: Comportamento standard se non è un consumabile
+				var btn_equip = Button.new()
+				btn_equip.text = tr("stats_btn_equip")
+				_apply_font(btn_equip, 20)
+				# Click -> Mostra popup per scegliere slot
+				btn_equip.pressed.connect(_show_slot_selection.bind(item_id, container))
+				row.add_child(btn_equip)
 
 # Mostra la schermata di selezione dello slot dove equipaggiare l'oggetto.
 func _show_slot_selection(item_id: String, container: VBoxContainer):
@@ -325,3 +338,36 @@ func _show_slot_selection(item_id: String, container: VBoxContainer):
 	_apply_font(btn_cancel, 20)
 	btn_cancel.pressed.connect(func(): _build_inventory_tab(container))
 	container.add_child(btn_cancel)
+
+# Gestisce l'utilizzo di un oggetto consumabile (es. Pozione)
+func _use_item(item_id: String, container: VBoxContainer):
+	if not game: return
+	
+	var data = game.item_data.get(item_id, {})
+	# Verifica sicurezza: procedi solo se l'oggetto ha la definizione "restore"
+	if data.has("restore"):
+		var restore_info = data["restore"]
+		var type = restore_info.get("type", "") # Tipo di energia (es. "life", "magic")
+		var value = int(restore_info.get("value", 0)) # Quantità da ripristinare
+		
+		if type != "":
+			# MECCANICA: Aumenta la riserva di energia specificata
+			game.modify_player_energy(type, value)
+			
+			# LOG: Registra l'effetto nel testo principale della storia
+			if game.text:
+				var item_name = game.item_manager.get_item_name(item_id) if game.item_manager else item_id
+				var energy_name = type
+				# Recupera il nome localizzato del tipo di energia (es. "Vita", "Magia") dai dati globali
+				var energy_defs = game.story_data.get("energy_types", {})
+				if energy_defs.has(type):
+					energy_name = tr(energy_defs[type].get("name", type))
+				
+				game.text.text += "\n" + tr("log_consumable_use") % [item_name, value, energy_name]
+			
+			# Rimuove una unità dell'oggetto dall'inventario
+			if item_id in game.inventory:
+				game.inventory.erase(item_id)
+				
+			# Ricarica la scheda inventario per rimuovere la riga dell'oggetto consumato
+			_build_inventory_tab(container)
