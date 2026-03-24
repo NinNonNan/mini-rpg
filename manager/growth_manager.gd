@@ -21,6 +21,11 @@ var game
 # Energia accumulata pronta per essere distribuita
 var available_energy: int = 0
 
+# Variabili per la gestione temporanea dell'assegnazione punti (UI Overlay)
+var initial_available_energy: int = 0
+var temp_changes: Dictionary = {} # Mappa stat_id -> punti aggiunti
+
+
 # Calcola quanta energia rilascia un nemico sconfitto.
 # La ricompensa è basata sulla somma delle statistiche del nemico (es. Vita + Magia).
 func calculate_reward(entity_id: String) -> int:
@@ -54,27 +59,54 @@ func calculate_reward(entity_id: String) -> int:
 func add_energy(amount: int):
 	available_energy += amount
 
-# Tenta di spendere energia per potenziare una statistica
-# Restituisce true se l'operazione ha successo
-func upgrade_stat(stat_type: String):
-	if available_energy <= 0:
-		return
-		
-	available_energy -= 1
-	
-	# 1. Aumenta il valore MASSIMO della statistica
-	var current_max = game.player_max_energy.get(stat_type, 0)
-	game.player_max_energy[stat_type] = current_max + 1
-	
-	# 2. Aumenta anche il valore ATTUALE (cura/ripristino parziale)
-	# Usa modify_player_energy per gestire clamp e logiche specifiche
-	game.modify_player_energy(stat_type, 1)
-			
-	game.update_stats() # Aggiorna le statistiche del giocatore (HP/MP)
+# --- Nuova Logica per UI Separata ---
 
-	# Se l'energia è esaurita, procedi. Altrimenti, aggiorna il menu.
-	if available_energy <= 0:
+# Inizializza la sessione di crescita
+func start_growth_session():
+	initial_available_energy = available_energy
+	temp_changes.clear()
+
+# Tenta di aggiungere un punto a una statistica (temporaneo)
+func try_increase_stat(stat_type: String) -> bool:
+	if available_energy > 0:
+		available_energy -= 1
+		temp_changes[stat_type] = temp_changes.get(stat_type, 0) + 1
+		return true
+	return false
+
+# Tenta di rimuovere un punto assegnato (temporaneo)
+func try_decrease_stat(stat_type: String) -> bool:
+	if temp_changes.get(stat_type, 0) > 0:
+		temp_changes[stat_type] -= 1
+		available_energy += 1
+		return true
+	return false
+
+# Resetta le modifiche attuali
+func reset_changes():
+	available_energy = initial_available_energy
+	temp_changes.clear()
+
+# Conferma le modifiche e applicale al gioco
+func confirm_changes():
+	if temp_changes.is_empty():
+		# Nessuna modifica fatta, esce solo
 		game.show_scene(game.current_victory_scene)
-	else:
-		# Aggiorna l'interfaccia per mostrare la nuova energia disponibile
-		game._update_growth_menu()
+		return
+
+	for stat_type in temp_changes:
+		var amount = temp_changes[stat_type]
+		if amount > 0:
+			# 1. Aumenta il valore MASSIMO della statistica
+			var current_max = game.player_max_energy.get(stat_type, 0)
+			game.player_max_energy[stat_type] = current_max + amount
+			
+			# 2. Aumenta anche il valore ATTUALE (cura/ripristino parziale)
+			game.modify_player_energy(stat_type, amount)
+	
+	# Pulisce i dati temporanei
+	temp_changes.clear()
+	initial_available_energy = available_energy
+	
+	game.update_stats() # Aggiorna le statistiche del giocatore (HP/MP)
+	game.show_scene(game.current_victory_scene)

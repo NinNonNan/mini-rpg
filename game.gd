@@ -1,6 +1,11 @@
 class_name Game
 extends Control
 
+# ==============================================================================
+# CORE CONTROLLER DEL GIOCO
+# Gestisce il loop principale, la UI, lo stato del giocatore e i manager.
+# ==============================================================================
+
 # --- Riferimenti ai Nodi dell'Interfaccia Utente (UI) ---
 @onready var meteo_stats = $UI/VBC_Main/MC_Meteo/PC/HBC/MeteoText
 @onready var enemy_stats_box = $UI/VBC_Main/MC_Enemy/PC
@@ -14,10 +19,11 @@ extends Control
 @onready var b2 = $UI/VBC_Main/VBC_Button/MC2/Choice2
 @onready var b3 = $UI/VBC_Main/VBC_Button/MC3/Choice3
 
-# --- QTE ---
+# --- Quick Time Event (QTE) ---
 @onready var qte = $Manager/QTE
 
 # --- Manager di Sistema ---
+# Riferimenti ai sottosistemi logici (Combattimento, Dialogo, Oggetti, ecc.)
 @onready var combat_manager = $Manager/Combat as CombatManager
 @onready var dialogue_manager = $Manager/Dialogue as DialogueManager
 @onready var empathy_manager = $Manager/Empathy as EmpathyManager
@@ -33,10 +39,11 @@ extends Control
 var player_energy: Dictionary = {}
 var player_max_energy: Dictionary = {}
 
-# --- Equipaggiamento ---
+# --- Inventario ed Equipaggiamento ---
 var equipment: Dictionary = {} # Mappa slot_id -> item_id
 var equipment_slots: Array[String] = ["Mano Destra", "Mano Sinistra", "Corpo", "Testa", "Accessorio"]
 
+# --- Accessori di Proprietà (Getter/Setter) ---
 # --- Compatibilità (Bridge) ---
 # Queste proprietà permettono agli altri script di usare game.health 
 # mentre noi usiamo il sistema dinamico player_energy sotto il cofano.
@@ -61,6 +68,7 @@ var max_mood: int:
 	get: return player_max_energy.get("mood", 0)
 	set(value): player_max_energy["mood"] = value
 
+# --- Variabili di Flusso ---
 var inventory: Array[String] = []
 var current_entity_pronoun: String = ""
 var current_victory_scene: String = ""
@@ -82,6 +90,13 @@ var entity_data: Dictionary = {}
 var damage_types_data: Dictionary = {}
 var current_scene: String = "start"
 
+# --- Risorse Condivise ---
+var custom_font = load("res://fonts/freecam v2.ttf")
+
+# --- UI Overlay References ---
+var growth_overlay: Control = null
+
+# --- Inizializzazione ---
 func _ready():
 	# QTE
 	if qte:
@@ -117,20 +132,22 @@ func _ready():
 	if not meteo_manager:
 		push_error(tr("error_node_meteo_not_found"))
 	if not rune_manager:
-		push_error("ERRORE: Nodo RuneManager non trovato in $Manager/Rune")
+		push_error(tr("error_rune_manager_node_missing"))
 	if not stats_manager:
-		push_warning("ATTENZIONE: StatsManager non trovato in $Manager/Stats. Aggiungi il nodo per abilitare il menu.")
+		push_warning(tr("warn_stats_manager_missing"))
 
 	# Impostazioni grafica
 	#text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
 	for btn in [b1, b2, b3]:
 		btn.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_FILL
+		# Assicura che i pulsanti si espandano correttamente nel layout
 
-	# Caricamento dati e traduzioni
+	# Caricamento dati JSON (storia, oggetti) e localizzazione
 	_load_story()
 	_load_translations()
 
 	# Iniezione Game nei manager
+	# Fornisce ai manager un riferimento a questo script principale per callback e accesso ai dati
 	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager]:
 		if mgr:
 			mgr.game = self
@@ -149,14 +166,18 @@ func _ready():
 	if dialogue_manager:
 		dialogue_manager.text_requested.connect(func(t): text.text = t)
 		dialogue_manager.choices_requested.connect(_on_dialogue_choices_requested)
+		# Aggiorna le statistiche quando cambiano durante un dialogo (es. Umore)
 		dialogue_manager.stats_updated.connect(update_stats)
 		dialogue_manager.dialogue_finished.connect(show_scene)
 		dialogue_manager.dialogue_failed.connect(_start_prepared_combat)
 
 	# Inizializza effetti grafici per la morte
 	# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
+		# Inizializza effetti grafici per la morte
+		# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
 	_init_death_effects()
 
+	
 	# Avvio scena iniziale
 	show_scene(current_scene)
 
@@ -182,7 +203,8 @@ func _load_story():
 	else:
 		push_error(tr("error_definitions_load"))
 
-	# Caricamento items separato
+	# Caricamento items separato per modularità
+	# ATTENZIONE: Percorso fisso in res://data/. NON MODIFICARE.
 	var items_json = StoryLoader.load_json_file("res://data/items.json")
 	if items_json != null:
 		item_data = items_json
@@ -219,20 +241,21 @@ func _load_translations(lang_code: String = "it"):
 		TranslationServer.add_translation(translation)
 		TranslationServer.set_locale(lang_code)
 
-# --- Stats ---
+# --- Gestione Statistiche Giocatore ---
 func get_player_energy_value(type_id: String) -> int:
+	# Restituisce il valore corrente di una statistica (es. "life", "magic")
 	return player_energy.get(type_id, 0)
 
-# Calcola la % di schivata basata sulle energie "fisiche" attuali.
-# -------------------------------------------------------------------------
-# MECCANICA DI SCHIVATA:
-# La probabilità di evitare un attacco dipende dalla somma delle energie
-# che hanno la proprietà "bonus": "evasion" definita in definitions.json.
-# (Es. Life e Chakra).
-#
-# Formula: (Somma Energie Evasione Attuali) * 2%
-# -------------------------------------------------------------------------
 func get_player_evasion() -> int:
+	# Calcola la % di schivata basata sulle energie "fisiche" attuali.
+	# -------------------------------------------------------------------------
+	# MECCANICA DI SCHIVATA:
+	# La probabilità di evitare un attacco dipende dalla somma delle energie
+	# che hanno la proprietà "bonus": "evasion" definita in definitions.json.
+	# (Es. Life e Chakra).
+	#
+	# Formula: (Somma Energie Evasione Attuali) * 2%
+	# -------------------------------------------------------------------------
 	var phys_sum = 0
 	var energy_types_def = story_data.get("energy_types", {})
 	
@@ -245,6 +268,7 @@ func get_player_evasion() -> int:
 	return int(min(evasion_chance, 75)) # Cap massimo al 75%
 
 func modify_player_energy(type_id: String, amount: int):
+	# Modifica una statistica del giocatore e gestisce i limiti (min/max).
 	if not player_energy.has(type_id):
 		return
 
@@ -254,6 +278,7 @@ func modify_player_energy(type_id: String, amount: int):
 
 	if type_id == "life":
 		# La vita può scendere sotto lo 0 per mostrare il danno in eccesso
+		# Se scende a 0 o meno, attiva il Game Over.
 		player_energy[type_id] = int(min(new_value, max_value))
 		if player_energy.get("life", 0) <= 0:
 			game_over()
@@ -275,6 +300,7 @@ func equip_item(item_id: String, slot: String):
 		update_stats()
 
 func unequip_item(slot: String):
+	# Rimuove un oggetto dallo slot specificato e lo rimette nell'inventario.
 	if slot in equipment:
 		var item_id = equipment[slot]
 		equipment.erase(slot)
@@ -282,6 +308,7 @@ func unequip_item(slot: String):
 		update_stats()
 
 func get_energy_string(type_id: String, amount: int, max_amount: int = -1) -> String:
+	# Formatta una stringa per visualizzare una statistica (Icona + Valore).
 	var icon = ""
 	var abbr = ""
 	if story_data.has("energy_types") and story_data["energy_types"].has(type_id):
@@ -293,6 +320,7 @@ func get_energy_string(type_id: String, amount: int, max_amount: int = -1) -> St
 	if max_amount >= 0:
 		value_str = "%d/%d" % [amount, max_amount]
 	
+	# Usa la rappresentazione visiva (icona) se abilitata, altrimenti testo.
 	if use_visual_health and icon:
 		if abbr:
 			return "%s: %s %s" % [abbr, icon, value_str]
@@ -302,11 +330,13 @@ func get_energy_string(type_id: String, amount: int, max_amount: int = -1) -> St
 		return "%s: %s" % [label, value_str]
 
 func get_damage_type_icon(type_id: String) -> String:
+	# Recupera l'icona associata a un tipo di danno (es. Fuoco, Ghiaccio).
 	if damage_types_data.has(type_id):
 		return damage_types_data[type_id].get("icon", "")
 	return ""
 
 func update_stats():
+	# Aggiorna tutte le etichette dell'interfaccia utente (UI) con i valori correnti.
 	var inventory_names = []
 	for item_id in inventory:
 		var icon = item_manager.get_item_icon(item_id)
@@ -316,6 +346,7 @@ func update_stats():
 	if inventory_names.size() > 0:
 		inv_str = ", ".join(inventory_names)
 
+	# Aggiorna UI nemico
 	var entity_text = ""
 	if combat_manager and combat_manager.current_entity_health > 0:
 		entity_text = tr("stats_enemy_hp") % get_health_string(combat_manager.current_entity_health)
@@ -330,6 +361,7 @@ func update_stats():
 					hp = int(stat.get("value", 0))
 		entity_text = tr("stats_enemy_hp") % get_health_string(hp)
 	
+	# Aggiorna UI giocatore
 	if player_stats:
 		var stats_lines: Array[String] = []
 		var player_energy_definitions: Array = story_data.get("player", {}).get("energy", [])
@@ -371,8 +403,9 @@ func update_stats():
 func get_health_string(amount: int) -> String:
 	return get_energy_string("life", amount)
 
-# --- Scene & Choices ---
+# --- Gestione Scene e Scelte ---
 func show_scene(scene_name):
+	# Carica e visualizza una nuova scena dal dizionario 'story'.
 	# Rileva la sconfitta di un'entità in combattimento.
 	# Se stavamo combattendo e ora passiamo alla scena di vittoria, registra la morte.
 	if was_in_combat and current_entity_id != "" and scene_name == current_victory_scene:
@@ -389,6 +422,7 @@ func show_scene(scene_name):
 	
 	if dialogue_manager: dialogue_manager.reset()
 	var scene = story[scene_name]
+	# Imposta il testo principale usando le traduzioni
 	text.text = tr(scene["text"])
 	update_stats()
 
@@ -396,6 +430,7 @@ func show_scene(scene_name):
 	var choices = scene.get("choices", [])
 	for i in range(buttons.size()):
 		if i < choices.size():
+			# Configura il pulsante per la scelta
 			buttons[i].text = tr(choices[i]["text"])
 			buttons[i].show()
 			_clear_signals(buttons[i])
@@ -404,39 +439,45 @@ func show_scene(scene_name):
 			buttons[i].hide()
 
 func handle_choice(choice):
+	# Esegue la logica associata a una scelta del giocatore.
 	# Aggiunge un feedback aptico (vibrazione) alla pressione di un pulsante di scelta.
 	Input.vibrate_handheld(50)
 
 	if choice.has("action"):
 		match choice["action"]:
 			"pickup":
+				# Raccoglie un oggetto
 				var item = choice.get("item_id", "")
 				if not item in inventory:
 					inventory.append(item)
 					var icon = item_manager.get_item_icon(item)
 					var item_name = item_manager.get_item_name(item)
 					var display_name = ("%s " % icon if icon and icon != "" else "") + item_name
-					text.text = tr("item_picked_up") % display_name
+					text.text = tr("item_picked_up") % [display_name]
 					update_stats()
 			"qte":
+				# Avvia un Quick Time Event
 				start_qte_event()
 			"combat":
+				# Prepara e avvia il combattimento
 				current_entity_id = choice.get("entity_id", "")
 				current_victory_scene = choice.get("victory_scene", "")
 				_start_prepared_combat()
 			"dialogue":
+				# Prepara e avvia il dialogo
 				current_entity_id = choice.get("entity_id", "")
 				current_victory_scene = choice.get("victory_scene", "")
 				if entity_data.has(current_entity_id):
 					current_entity_pronoun = entity_data[current_entity_id].get("pronoun", "")
 				_start_prepared_dialogue()
 			"runes":
+				# Avvia il minigioco delle rune
 				if rune_manager:
 					rune_manager.start_rune_casting()
 	if choice.has("next"):
 		show_scene(choice["next"])
 
-# --- Combattimento & Dialogo ---
+# --- Preparazione Combattimento & Dialogo ---
 func _start_prepared_combat():
 	if combat_manager:
 		was_in_combat = true
@@ -448,6 +489,7 @@ func _start_prepared_dialogue():
 		dialogue_manager.start_dialogue(current_entity_id, current_entity_pronoun, 0, current_victory_scene)
 
 func _on_dialogue_choices_requested(choices):
+	# Callback dal DialogueManager per visualizzare le opzioni di dialogo sui pulsanti principali.
 	var buttons = [b1, b2, b3]
 	for i in range(buttons.size()):
 		if i < choices.size():
@@ -458,7 +500,7 @@ func _on_dialogue_choices_requested(choices):
 		else:
 			buttons[i].hide()
 
-# --- Gestione Rune ---
+# --- Gestione Sistema Rune ---
 func _on_rune_data_received(spell_data: Dictionary):
 	var spell_id = spell_data.get("id", "rune_spell")
 	var power = int(spell_data.get("power", 0))
@@ -476,8 +518,20 @@ func _on_spell_cast_success(spell_id, power, cost, type):
 	modify_player_energy("magic", -int(cost))
 
 	var msg = ""
-	if type == "sacro":
-		# Cura il giocatore
+	# -------------------------------------------------------------------------
+	# !!! MECCANICA FONDAMENTALE - NON MODIFICARE !!!
+	#
+	# REGOLE:
+	# 1. La cura non esiste come meccanica separata.
+	# 2. Se il giocatore ha affinità con un tipo di energia, la assorbe e si cura.
+	# 3. Se il giocatore NON ha affinità, l'energia viene proiettata come danno.
+	#
+	# QUESTA LOGICA NON DEVE ESSERE ALTERATA IN NESSUN CASO.
+	# -------------------------------------------------------------------------
+	var player_affinities = story_data.get("player", {}).get("affinity", [])
+
+	if type in player_affinities:
+		# Affinità = Cura (Assorbe l'energia)
 		modify_player_energy("life", int(power))
 		msg = tr("spell_cast_heal") % [tr(spell_id), int(power)]
 	else:
@@ -492,6 +546,9 @@ func _on_spell_cast_success(spell_id, power, cost, type):
 				# Nota: Il CombatManager gestirà la transizione al prossimo click o update
 		else:
 			msg = tr("spell_cast_no_enemy")
+	# -------------------------------------------------------------------------
+	# FINE BLOCCO MECCANICA FONDAMENTALE
+	# -------------------------------------------------------------------------
 
 	# Aggiorna il testo e le statistiche
 	text.text += "\n" + msg
@@ -515,18 +572,44 @@ func _init_death_effects():
 	grayscale_material = ShaderMaterial.new()
 	grayscale_material.shader = shader
 
+	var label = Label.new()
 	# 2. Overlay semitrasparente per il box giocatore
 	death_overlay = ColorRect.new()
-	death_overlay.color = Color(0.2, 0.2, 0.2, 0.5) # Grigio scuro semitrasparente
-	death_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	death_overlay.color = Color(0, 0, 0, 0.85) # Sfondo scuro
+	death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT) # Copre tutto lo schermo
+	
+	# MODIFICA: Imposto il filtro mouse su STOP per intercettare i click sulla schermata nera.
+	death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Connetto l'evento di input: se viene rilevato un click del mouse, riavvia il gioco.
+	death_overlay.gui_input.connect(func(event):
+		if event is InputEventMouseButton and event.pressed:
+			_restart_game()
+	)
+	
 	death_overlay.hide()
 	
-	var player_mc = $UI/VBC_Main/MC_Player
-	if player_mc:
-		player_mc.add_child(death_overlay)
+	label.name = "DeathLabel"
+	# Usa PRESET_FULL_RECT per occupare tutto lo schermo e permettere l'allineamento centrale corretto.
+	# PRESET_CENTER posizionava l'origine al centro, facendo finire il testo a destra.
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_color", Color.RED)
+	label.add_theme_font_size_override("font_size", 64)
 
-# --- Game Over ---
+	if custom_font:
+		label.add_theme_font_override("font", custom_font)
+
+	death_overlay.add_child(label)
+
+	# Aggiungo l'overlay alla radice per coprire tutto
+	add_child(death_overlay)
+
+# --- Gestione Game Over ---
+
 func game_over():
+	# Attiva lo stato di "Game Over".
+	# Registra la morte, mostra il messaggio, disabilita il gioco normale.
 	if death_manager:
 		death_manager.record_player_death()
 	text.text = tr("game_over_text")
@@ -544,9 +627,19 @@ func game_over():
 	# !!! NON RIMUOVERE QUESTE RIGHE !!! Gestiscono il feedback visivo di morte (icona grigia e overlay scuro).
 	if player_icon: player_icon.material = grayscale_material
 	if player_stats: player_stats.material = grayscale_material
-	if death_overlay: death_overlay.show()
+	if death_overlay:
+		var label = death_overlay.get_node_or_null("DeathLabel")
+		if label:
+			label.text = tr("game_over_text")
+		
+		death_overlay.modulate.a = 0.0
+		death_overlay.show()
+		
+		var tween = create_tween()
+		tween.tween_property(death_overlay, "modulate:a", 1.0, 2.0) # Dissolvenza
 
 func _restart_game():
+	# Ripristina lo stato del giocatore per una nuova partita.
 	health = max_health
 	mana = max_mana
 	mood = max_mood
@@ -558,9 +651,12 @@ func _restart_game():
 	if player_stats: player_stats.material = null
 	if death_overlay: death_overlay.hide()
 
+	if growth_overlay: growth_overlay.queue_free(); growth_overlay = null
+
 	show_scene("start")
 
 func notify_entity_death(entity_id: String):
+	# Notifica al DeathManager che un nemico è stato sconfitto.
 	if death_manager:
 		death_manager.record_entity_death(entity_id)
 
@@ -569,6 +665,7 @@ func _trigger_haptic():
 	Input.vibrate_handheld(50)
 
 func _clear_signals(button: Button):
+	# Rimuove tutte le connessioni esistenti dai pulsanti per evitare doppi click o azioni errate.
 	for conn in button.pressed.get_connections():
 		button.pressed.disconnect(conn.callable)
 	
@@ -576,7 +673,7 @@ func _clear_signals(button: Button):
 	if not button.pressed.is_connected(_trigger_haptic):
 		button.pressed.connect(_trigger_haptic)
 
-# --- QTE ---
+# --- Quick Time Event (QTE) ---
 func start_qte_event(message_key: String = "qte_start_default", context: String = ""):
 	disable_choices()
 	text.text = tr(message_key)
@@ -597,6 +694,7 @@ func start_qte_event(message_key: String = "qte_start_default", context: String 
 	if qte: qte.start(b1, speed_factor) # Passa b1 e la velocità calcolata
 
 func _on_qte_finished(value):
+	# Callback chiamata quando il QTE finisce. Calcola il risultato in base alla precisione.
 	var result_text = tr("qte_result_miss")
 	var multiplier = 0.0 # Un "MANCATO" non infligge danno
 	if value > 0.45 and value < 0.55:
@@ -619,6 +717,7 @@ func _on_qte_finished(value):
 	# I pulsanti verranno riattivati dal CombatManager al prossimo turno del giocatore
 
 func enable_target_selection():
+	# Abilita la modalità di selezione bersaglio (per magie o oggetti).
 	enable_choices()
 	text.text = tr("combat_select_target")
 	
@@ -646,6 +745,7 @@ func enable_target_selection():
 	b3.pressed.connect(func(): target_clicked.emit("back"))
 
 func disable_target_selection():
+	# Nasconde i pulsanti di selezione bersaglio.
 	for btn in [b1, b2, b3]:
 		btn.hide()
 		_clear_signals(btn)
@@ -658,7 +758,7 @@ func enable_choices():
 	for btn in [b1, b2, b3]:
 		btn.disabled = false
 
-# --- Menu Crescita ---
+# --- Menu Crescita (Level Up) ---
 func start_growth_menu(next_scene: String):
 	current_victory_scene = next_scene
 	
@@ -666,38 +766,177 @@ func start_growth_menu(next_scene: String):
 		show_scene(next_scene)
 		return
 		
-	enable_choices()
-	_update_growth_menu()
-
-func _update_growth_menu():
-	if not growth_manager or not "available_energy" in growth_manager:
-		return
+	# Prepara il manager per una nuova sessione
+	growth_manager.start_growth_session()
 	
-	var energy = growth_manager.available_energy
-	text.text = tr("growth_menu_title") % energy
-	
-	var buttons = [b1, b2, b3]
-	for btn in buttons:
-		btn.hide()
-		_clear_signals(btn)
+	# Crea e mostra l'overlay grafico
+	_create_growth_overlay()
 
+func _create_growth_overlay():
+	# Se esiste già, rimuovilo per ricrearlo pulito
+	if growth_overlay:
+		growth_overlay.queue_free()
+	
+	# 1. Background scuro
+	growth_overlay = ColorRect.new()
+	growth_overlay.color = Color(0, 0, 0, 0.9)
+	growth_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	growth_overlay.mouse_filter = Control.MOUSE_FILTER_STOP # Blocca i click sotto
+	
+	# 2. Contenitore Centrale
+	var center_container = CenterContainer.new()
+	center_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	growth_overlay.add_child(center_container)
+	
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 20)
+	center_container.add_child(vbox)
+	
+	# Carica il font e imposta la dimensione standard per questo menu
+	var custom_font = load("res://fonts/freecam v2.ttf")
+	var font_size = 20
+	
+	# 3. Titolo e Punti Disponibili
+	var title_label = Label.new()
+	title_label.name = "TitleLabel"
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Applica font e dimensione personalizzati
+	title_label.add_theme_font_override("font", custom_font)
+	title_label.add_theme_font_size_override("font_size", font_size + 4) # Titolo leggermente più grande per gerarchia visiva
+	vbox.add_child(title_label)
+	
+	# 4. Lista Statistiche
+	var stats_container = VBoxContainer.new()
+	stats_container.name = "StatsContainer"
+	stats_container.add_theme_constant_override("separation", 10)
+	vbox.add_child(stats_container)
+	
+	# Popola la lista delle statistiche
 	var player_energy_types = story_data.get("player", {}).get("energy", [])
 	var energy_type_definitions = story_data.get("energy_types", {})
 	
-	var button_index = 0
 	for energy_stat in player_energy_types:
-		if button_index >= buttons.size():
-			break # Mostra al massimo 3 opzioni
-
 		var stat_id = energy_stat.get("type")
-
 		var stat_name_key = energy_type_definitions.get(stat_id, {}).get("name", stat_id)
 		var stat_name = tr(stat_name_key)
-		var current_value = player_max_energy.get(stat_id, 0)
 		
-		var btn = buttons[button_index]
-		btn.text = tr("growth_btn_stat") % [stat_name, current_value]
-		btn.show()
-		btn.pressed.connect(growth_manager.upgrade_stat.bind(stat_id))
+		var row = HBoxContainer.new()
+		row.name = "Row_" + stat_id
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		
-		button_index += 1
+		# Bottone Meno
+		var btn_minus = Button.new()
+		btn_minus.text = "➖" # Sostituisce il testo con un'emoji
+		btn_minus.custom_minimum_size = Vector2(40, 40)
+		# Applica font e dimensione personalizzati
+		btn_minus.add_theme_font_override("font", custom_font)
+		btn_minus.add_theme_font_size_override("font_size", font_size)
+		btn_minus.pressed.connect(func(): 
+			if growth_manager.try_decrease_stat(stat_id):
+				_refresh_growth_ui()
+		)
+		row.add_child(btn_minus)
+		
+		# Label Nome Statistica (Colonna sinistra)
+		var lbl_name = Label.new()
+		lbl_name.name = "LabelName"
+		lbl_name.text = stat_name		
+		# Larghezza fissa precalcolata per evitare spostamenti
+		lbl_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl_name.custom_minimum_size = Vector2(160, 0) 
+		lbl_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		# Applica font e dimensione personalizzati
+		lbl_name.add_theme_font_override("font", custom_font)
+		lbl_name.add_theme_font_size_override("font_size", font_size)
+		row.add_child(lbl_name)
+
+		# Label Valore Statistica (Colonna destra)
+		var lbl_val = Label.new()
+		lbl_val.name = "LabelValue"
+		lbl_val.text = "0"
+		# Larghezza fissa precalcolata per ospitare valore e bonus
+		lbl_val.custom_minimum_size = Vector2(120, 0) 
+		lbl_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		lbl_val.add_theme_font_override("font", custom_font)
+		lbl_val.add_theme_font_size_override("font_size", font_size)
+		row.add_child(lbl_val)
+		
+		# Bottone Più
+		var btn_plus = Button.new()
+		btn_plus.text = "➕" # Sostituisce il testo con un'emoji
+		btn_plus.custom_minimum_size = Vector2(40, 40)
+		btn_plus.add_theme_font_override("font", custom_font)
+		btn_plus.add_theme_font_size_override("font_size", font_size)
+		btn_plus.pressed.connect(func():
+			if growth_manager.try_increase_stat(stat_id):
+				_refresh_growth_ui()
+		)
+		row.add_child(btn_plus)
+		
+		stats_container.add_child(row)
+
+	# 5. Bottoni Azione (Reset / Conferma)
+	var actions_row = HBoxContainer.new()
+	actions_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(actions_row)
+	
+	var btn_reset = Button.new()
+	btn_reset.text = tr("growth_btn_reset")
+	btn_reset.add_theme_font_override("font", custom_font)
+	btn_reset.add_theme_font_size_override("font_size", font_size)
+	btn_reset.pressed.connect(func():
+		growth_manager.reset_changes()
+		_refresh_growth_ui()
+	)
+	actions_row.add_child(btn_reset)
+	
+	var btn_confirm = Button.new()
+	btn_confirm.text = tr("growth_btn_confirm")
+	btn_confirm.add_theme_font_override("font", custom_font)
+	btn_confirm.add_theme_font_size_override("font_size", font_size)
+	btn_confirm.pressed.connect(func():
+		growth_manager.confirm_changes()
+		growth_overlay.queue_free()
+		growth_overlay = null
+		enable_choices()
+	)
+	actions_row.add_child(btn_confirm)
+	
+	add_child(growth_overlay)
+	_refresh_growth_ui()
+
+func _refresh_growth_ui():
+	if not growth_overlay or not growth_manager:
+		return
+	
+	# Aggiorna Titolo
+	var energy = growth_manager.available_energy
+	var title_lbl = growth_overlay.find_child("TitleLabel", true, false)
+	if title_lbl:
+		title_lbl.text = tr("growth_menu_title") % energy
+	
+	# Aggiorna Righe
+	var stats_container = growth_overlay.find_child("StatsContainer", true, false)
+	if stats_container:
+		for child in stats_container.get_children():
+			var stat_id = child.name.replace("Row_", "")
+			var lbl_name = child.get_node_or_null("LabelName")
+			var lbl_val = child.get_node_or_null("LabelValue")
+			
+			if lbl_name and lbl_val:
+				var energy_type_definitions = story_data.get("energy_types", {})
+				var stat_name_key = energy_type_definitions.get(stat_id, {}).get("name", stat_id)
+				var base_val = player_max_energy.get(stat_id, 0)
+				var current_val = player_energy.get(stat_id, 0)
+				var added_val = growth_manager.temp_changes.get(stat_id, 0)
+				
+				lbl_name.text = tr(stat_name_key)
+				
+				# Calcola il valore totale (base + bonus temporaneo)
+				var total_val = base_val + added_val
+				
+				# Mostra il valore totale
+				lbl_val.text = str(total_val)
+				lbl_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				
