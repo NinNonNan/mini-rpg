@@ -44,9 +44,9 @@ var player_max_energy: Dictionary = {}
 var equipment: Dictionary = {} # Mappa slot_id -> item_id
 var equipment_slots: Array[String] = ["Mano Destra", "Mano Sinistra", "Corpo", "Testa", "Accessorio"]
 
-# --- Accessori di Proprietà (Getter/Setter) ---
-# --- Compatibilità (Bridge) ---
-# Queste proprietà permettono agli altri script di usare game.health 
+# --- Accessori di Propriet├á (Getter/Setter) ---
+# --- Compatibilit├á (Bridge) ---
+# Queste propriet├á permettono agli altri script di usare game.health 
 # mentre noi usiamo il sistema dinamico player_energy sotto il cofano.
 var health: int:
 	get: return player_energy.get("life", 0)
@@ -75,9 +75,9 @@ var current_entity_pronoun: String = ""
 var current_victory_scene: String = ""
 var current_entity_id: String = ""
 var was_in_combat: bool = false # Aggiunto per tracciare la vittoria in combattimento
-var qte_power_multiplier: float = 0.2 # Moltiplicatore per la velocità del QTE
+var qte_power_multiplier: float = 0.2 # Moltiplicatore per la velocit├á del QTE
 
-var qte_context: String = "" # Contesto per sapere perché è stato avviato il QTE
+var qte_context: String = "" # Contesto per sapere perch├® ├¿ stato avviato il QTE
 signal target_clicked(target_type)
 var use_visual_health: bool = true
 var grayscale_material: ShaderMaterial
@@ -204,19 +204,19 @@ func _load_story():
 	# ATTENZIONE: Percorso fisso in res://data/. NON MODIFICARE.
 	var definitions_json = StoryLoader.load_json_file("res://data/definitions.json")
 	if definitions_json != null:
-		# Uniamo le definizioni in story_data per mantenere la compatibilità
+		# Uniamo le definizioni in story_data per mantenere la compatibilit├á
 		story_data.merge(definitions_json, true)
 		damage_types_data = definitions_json.get("damage_types", {})
 	else:
 		push_error(tr("error_definitions_load"))
 
-	# Caricamento items separato per modularità
+	# Caricamento items separato per modularit├á
 	# ATTENZIONE: Percorso fisso in res://data/. NON MODIFICARE.
 	var items_json = StoryLoader.load_json_file("res://data/items.json")
 	if items_json != null:
 		item_data = items_json
 	
-	# Carica dati entità (player e nemici) da file separato
+	# Carica dati entit├á (player e nemici) da file separato
 	var entities_json = StoryLoader.load_json_file("res://data/entities.json")
 	var player_data = {}
 
@@ -273,8 +273,8 @@ func get_player_evasion() -> int:
 	# Calcola la % di schivata basata sulle energie "fisiche" attuali.
 	# -------------------------------------------------------------------------
 	# MECCANICA DI SCHIVATA:
-	# La probabilità di evitare un attacco dipende dalla somma delle energie
-	# che hanno la proprietà "bonus": "evasion" definita in definitions.json.
+	# La probabilit├á di evitare un attacco dipende dalla somma delle energie
+	# che hanno la propriet├á "bonus": "evasion" definita in definitions.json.
 	# (Es. Life e Chakra).
 	#
 	# Formula: (Somma Energie Evasione Attuali) * 2%
@@ -300,7 +300,7 @@ func modify_player_energy(type_id: String, amount: int):
 	var new_value = current_value + amount
 
 	if type_id == "life":
-		# La vita può scendere sotto lo 0 per mostrare il danno in eccesso
+		# La vita pu├▓ scendere sotto lo 0 per mostrare il danno in eccesso
 		# Se scende a 0 o meno, attiva il Game Over.
 		player_energy[type_id] = int(min(new_value, max_value))
 		if player_energy.get("life", 0) <= 0:
@@ -312,7 +312,7 @@ func modify_player_energy(type_id: String, amount: int):
 	update_stats()
 
 func equip_item(item_id: String, slot: String):
-	# Se lo slot è occupato, rimuovi prima l'oggetto attuale
+	# Se lo slot ├¿ occupato, rimuovi prima l'oggetto attuale
 	if slot in equipment:
 		unequip_item(slot)
 	
@@ -405,7 +405,7 @@ func update_stats():
 		# Aggiungi l'inventario
 		var inv_line: String
 		if use_visual_health:
-			inv_line = "🎒 %s" % inv_str
+			inv_line = "­ƒÄÆ %s" % inv_str
 		else:
 			inv_line = "%s %s" % [tr("stats_inventory_prefix"), inv_str]
 		stats_lines.append(inv_line)
@@ -422,14 +422,14 @@ func update_stats():
 				enemy_icon.texture = null
 		enemy_stats_box.visible = true
 
-# Funzione deprecata ma mantenuta per compatibilità interna
+# Funzione deprecata ma mantenuta per compatibilit├á interna
 func get_health_string(amount: int) -> String:
 	return get_energy_string("life", amount)
 
 # --- Gestione Scene e Scelte ---
 func show_scene(scene_name):
 	# Carica e visualizza una nuova scena dal dizionario 'story'.
-	# Rileva la sconfitta di un'entità in combattimento.
+	# Rileva la sconfitta di un'entit├á in combattimento.
 	# Se stavamo combattendo e ora passiamo alla scena di vittoria, registra la morte.
 	if was_in_combat and current_entity_id != "" and scene_name == current_victory_scene:
 		notify_entity_death(current_entity_id)
@@ -537,7 +537,7 @@ func _on_rune_data_received(spell_data: Dictionary):
 
 func _on_spell_cast_success(spell_id, power, cost, type):
 	# FIX: Se siamo in combattimento, il CombatManager gestisce l'effetto della runa (danni, resistenze, ecc.)
-	# Interrompiamo qui per evitare che Game.gd applichi danni "puri" ignorando le immunità del nemico.
+	# Interrompiamo qui per evitare che Game.gd applichi danni "puri" ignorando le immunit├á del nemico.
 	if was_in_combat:
 		return
 	
@@ -550,19 +550,19 @@ func _on_spell_cast_success(spell_id, power, cost, type):
 	#
 	# REGOLE:
 	# 1. La cura non esiste come meccanica separata.
-	# 2. Se il giocatore ha affinità con un tipo di energia, la assorbe e si cura.
-	# 3. Se il giocatore NON ha affinità, l'energia viene proiettata come danno.
+	# 2. Se il giocatore ha affinit├á con un tipo di energia, la assorbe e si cura.
+	# 3. Se il giocatore NON ha affinit├á, l'energia viene proiettata come danno.
 	#
 	# QUESTA LOGICA NON DEVE ESSERE ALTERATA IN NESSUN CASO.
 	# -------------------------------------------------------------------------
 	var player_affinities = story_data.get("player", {}).get("affinity", [])
 
 	if type in player_affinities:
-		# Affinità = Cura (Assorbe l'energia)
+		# Affinit├á = Cura (Assorbe l'energia)
 		modify_player_energy("life", int(power))
 		msg = tr("spell_cast_heal") % [tr(spell_id), int(power)]
 	else:
-		# Danno al nemico (se in combattimento o se c'è un'entità attiva)
+		# Danno al nemico (se in combattimento o se c'├¿ un'entit├á attiva)
 		if combat_manager and combat_manager.current_entity_health > 0:
 			combat_manager.current_entity_health -= int(power)
 			msg = tr("spell_cast_damage") % [tr(spell_id), int(power)]
@@ -570,7 +570,7 @@ func _on_spell_cast_success(spell_id, power, cost, type):
 			# Controllo vittoria immediata
 			if combat_manager.current_entity_health <= 0:
 				msg += " " + tr("combat_victory")
-				# Nota: Il CombatManager gestirà la transizione al prossimo click o update
+				# Nota: Il CombatManager gestir├á la transizione al prossimo click o update
 		else:
 			msg = tr("spell_cast_no_enemy")
 	# -------------------------------------------------------------------------
@@ -684,7 +684,7 @@ func _restart_game():
 	show_scene("start")
 
 func notify_entity_death(entity_id: String):
-	# Notifica al DeathManager che un nemico è stato sconfitto.
+	# Notifica al DeathManager che un nemico ├¿ stato sconfitto.
 	if death_manager:
 		death_manager.record_entity_death(entity_id)
 
@@ -709,7 +709,7 @@ func start_qte_event(message_key: String = "qte_start_default", context: String 
 	
 	var speed_factor: float = 1.0
 	
-	# Calcola la velocità in base alla potenza del mostro (totale energia)
+	# Calcola la velocit├á in base alla potenza del mostro (totale energia)
 	if current_entity_id != "" and entity_data.has(current_entity_id):
 		var entity = entity_data[current_entity_id]
 		var total_energy = 0.0
@@ -719,7 +719,7 @@ func start_qte_event(message_key: String = "qte_start_default", context: String 
 		if total_energy > 0:
 			speed_factor = total_energy * qte_power_multiplier
 
-	if qte: qte.start(b1, speed_factor) # Passa b1 e la velocità calcolata
+	if qte: qte.start(b1, speed_factor) # Passa b1 e la velocit├á calcolata
 
 func _on_qte_finished(value):
 	# Callback chiamata quando il QTE finisce. Calcola il risultato in base alla precisione.
@@ -745,7 +745,7 @@ func _on_qte_finished(value):
 	# I pulsanti verranno riattivati dal CombatManager al prossimo turno del giocatore
 
 func enable_target_selection():
-	# Abilita la modalità di selezione bersaglio (per magie o oggetti).
+	# Abilita la modalit├á di selezione bersaglio (per magie o oggetti).
 	enable_choices()
 	text.text = tr("combat_select_target")
 	
@@ -801,7 +801,7 @@ func start_growth_menu(next_scene: String):
 	_create_growth_overlay()
 
 func _create_growth_overlay():
-	# Se esiste già, rimuovilo per ricrearlo pulito
+	# Se esiste gi├á, rimuovilo per ricrearlo pulito
 	if growth_overlay:
 		growth_overlay.queue_free()
 	
@@ -830,7 +830,7 @@ func _create_growth_overlay():
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# Applica font e dimensione personalizzati
 	title_label.add_theme_font_override("font", custom_font)
-	title_label.add_theme_font_size_override("font_size", font_size + 4) # Titolo leggermente più grande per gerarchia visiva
+	title_label.add_theme_font_size_override("font_size", font_size + 4) # Titolo leggermente pi├╣ grande per gerarchia visiva
 	vbox.add_child(title_label)
 	
 	# 4. Lista Statistiche
@@ -854,7 +854,7 @@ func _create_growth_overlay():
 		
 		# Bottone Meno
 		var btn_minus = Button.new()
-		btn_minus.text = "➖" # Sostituisce il testo con un'emoji
+		btn_minus.text = "Ô×û" # Sostituisce il testo con un'emoji
 		btn_minus.custom_minimum_size = Vector2(40, 40)
 		# Applica font e dimensione personalizzati
 		btn_minus.add_theme_font_override("font", custom_font)
@@ -889,9 +889,9 @@ func _create_growth_overlay():
 		lbl_val.add_theme_font_size_override("font_size", font_size)
 		row.add_child(lbl_val)
 		
-		# Bottone Più
+		# Bottone Pi├╣
 		var btn_plus = Button.new()
-		btn_plus.text = "➕" # Sostituisce il testo con un'emoji
+		btn_plus.text = "Ô×ò" # Sostituisce il testo con un'emoji
 		btn_plus.custom_minimum_size = Vector2(40, 40)
 		btn_plus.add_theme_font_override("font", custom_font)
 		btn_plus.add_theme_font_size_override("font_size", font_size)
