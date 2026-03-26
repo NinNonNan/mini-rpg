@@ -2,7 +2,7 @@
 	"energy_types": {
 		"life": { "name": "energy_life", "icon": "❤️", "abbreviation": "HP", "bonus": "evasion" },
 		"magic": { "name": "energy_magic", "icon": "✨", "abbreviation": "MP" },
-		"mood": { "name": "energy_mood", "icon": "😊", "abbreviation": "MD" },
+		"mood": { "name": "energy_mood", "icon": "😊", "abbreviation": "MD", "bonus": "social" },
 		"chakra": { "name": "energy_chakra", "icon": "🌀", "abbreviation": "CK", "bonus": "evasion" }
 	},
 	"damage_types": {
