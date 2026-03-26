@@ -7,10 +7,12 @@
 	},
 	"damage_types": {
 		"taglio": {"name": "Taglio","icon": "🗡️"},
-		"fuoco": {"name": "Fuoco","icon": "🔥"},
+		"fuoco": {"name": "Fuoco","icon": "🔥","opposite":"freddo"},
+		"freddo": {"name": "Freddo","icon": "❄️","opposite":"fuoco"},
 		"morso": {"name": "Morso","icon": "🦷"},
 		"sole": {"name": "Sole","icon": "☀️"},
-		"sacro": {"name": "Sacro","icon": "✨"},
+		"sacro": {"name": "Sacro","icon": "✨","opposite":"profano"},
+		"profano": {"name": "Profano","icon": "💩","opposite":"sacro"},
 		"graffio": {"name": "Graffio","icon": "🐾"},
 		"artiglio": {"name": "Artiglio","icon": "🐾"}
 	},
