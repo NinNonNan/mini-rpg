@@ -1,157 +1,165 @@
-# =========================================================
-# QTE MANAGER (Quick Time Event)
-# =========================================================
-# Gestisce i minigiochi di tempismo per il combattimento.
-#
-# Funzionalità:
-# - Crea una barra visiva sovrapposta all'interfaccia.
-# - Muove un cursore oscillante.
-# - Rileva il tempismo del giocatore (click/input).
-# - Restituisce un valore normalizzato (0.0 - 1.0) dove 0.5 è "Perfetto".
-#
-# Utilizzato principalmente per determinare il moltiplicatore di danno
-# degli attacchi fisici del giocatore.
-
-class_name QTE
-extends Control
+extends Node
 
 signal qte_finished(value)
 
-@onready var bar = ColorRect.new()
-@onready var cursor = TextureRect.new()
+var game 
+var is_active: bool = false
+var current_value: float = 0.0
+var speed: float = 1.0
+var target_btn: Button = null
+var context: String = ""
+var power_multiplier: float = 0.2
+var elapsed_time: float = 0.0
 
-# Assicurati di avere un file SVG/PNG a questo percorso, o aggiornalo!
-var cursor_texture_path = "res://art/cursor.svg"
-
-var active = false
-var base_speed = 500.0
-var current_speed = 500.0
-var direction = 1
-var time: float = 0.0
+# Riferimenti agli elementi grafici della barra
+var bar_container: Button = null
+var cursor_sprite: TextureRect = null
 
 func _ready():
-	# Inizializzazione grafica procedurale (senza file .tscn)
-	# Imposta la barra
-	bar.size = Vector2(400, 50)
-	bar.position = Vector2(200, 200)
-	# Abilita la ricezione degli input del mouse sulla barra
-	bar.mouse_filter = Control.MOUSE_FILTER_STOP
-	bar.gui_input.connect(_on_bar_gui_input)
-	add_child(bar)
+	set_process(false)
 
-	# Imposta l'immagine del cursore
-	if ResourceLoader.exists(cursor_texture_path):
-		cursor.texture = load(cursor_texture_path)
+func start_event(message_key: String = "qte_start_default", ctx: String = ""):
+	# 1. Prepara la UI del gioco tramite il riferimento 'game'
+	game.disable_choices()
+	game.text.text = tr(message_key)
+	context = ctx
 	
-	cursor.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	cursor.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	# 2. Avvia il calcolo della velocità e il loop interattivo
+	start_for_entity(game.b1, game.current_entity_id, game.entity_data, power_multiplier)
+
+func start_for_entity(target_button: Button, entity_id: String, entity_data: Dictionary, power_multiplier: float):
+	var calculated_speed: float = 1.0
 	
-	var dim = bar.size.y * 1.3 # 30% più grande della barra
-	cursor.size = Vector2(dim, dim)
-	# Centra verticalmente: (AltezzaBarra - AltezzaCursore) / 2
-	cursor.position = Vector2(bar.position.x, bar.position.y + (bar.size.y - dim) / 2.0)
-	cursor.mouse_filter = Control.MOUSE_FILTER_IGNORE # Il cursore non deve bloccare il click sulla barra
-	add_child(cursor)
+	if entity_id != "" and entity_data.has(entity_id):
+		var entity = entity_data[entity_id]
+		var total_energy = 0.0
+		if entity.has("energy"):
+			for stat in entity["energy"]:
+				total_energy += float(stat.get("value", 0))
+		if total_energy > 0:
+			calculated_speed = total_energy * power_multiplier
 
-	hide() # QTE nascosto di default
+	# Avviamo il QTE interattivo
+	start(target_button, calculated_speed)
 
-# Avvia il minigioco.
-# - target_control: Il pulsante su cui sovrapporre la barra (es. il pulsante "Attacca").
-# - speed_factor: Moltiplicatore di velocità (più alto = più difficile).
-func start(target_control: Control = null, speed_factor: float = 1.0):
-	current_speed = base_speed * speed_factor
-	if target_control:
-		set_anchors_preset(Control.PRESET_TOP_LEFT)
-		custom_minimum_size = Vector2.ZERO
+func start(button: Button, speed_val: float):
+	if is_active: return
+	
+	target_btn = button
+	# Clamp della velocità per evitare che il QTE sia impossibile o troppo lento
+	speed = clamp(speed_val, 0.5, 4.0) 
+	current_value = 0.0
+	elapsed_time = 0.0
+	is_active = true
+	
+	# Prepariamo il pulsante: deve essere attivo per ricevere il click del QTE
+	if target_btn:
+		target_btn.disabled = false
+		# Pulizia connessioni precedenti per evitare conflitti con la logica di Game.gd
+		for connection in target_btn.pressed.get_connections():
+			target_btn.pressed.disconnect(connection.callable)
 		
-		# Sovrappone il QTE al controllo target (es. il bottone)
-		global_position = target_control.global_position
-		size = target_control.size
-		# Assicura che il QTE sia disegnato sopra il bottone e l'interfaccia
-		z_index = 10
-		
-		# Adatta la barra e il cursore alle nuove dimensioni
-		bar.position = Vector2.ZERO
-		bar.size = size
-		
-		var dim = size.y * 1.3 # Mantiene la proporzione del 30% più grande
-		cursor.size = Vector2(dim, dim)
-		cursor.position.y = (size.y - dim) / 2.0
-	else:
-		z_index = 0 # Ripristina lo z-index normale se non c'è un target specifico
-
-	active = true
-	show()
-	# Reset cursore all'inizio della barra (sin(-PI/2) = -1)
-	time = -PI / 2
-	cursor.position.x = bar.position.x
-
-# Ferma il minigioco e nasconde l'interfaccia.
-func stop():
-	active = false
-	hide()
+		# Colleghiamo il click alla nostra logica di intercettazione
+		target_btn.pressed.connect(_on_button_pressed)
+		# Creiamo la barra visiva sopra il pulsante
+		_create_visual_bar()
+	
+	set_process(true)
+	print("[QTEManager] Interazione avviata. Obiettivo: 0.5. Velocità: ", speed)
 
 func _process(delta):
-	if not active:
-		return
+	if not is_active: return
 	
-	# Calcolo movimento oscillatorio (onda sinusoidale)
-	var max_dist = bar.size.x - cursor.size.x
-	var amplitude = max_dist / 2.0
-	var center_x = bar.position.x + amplitude
+	elapsed_time += delta * speed
 	
-	# Calcola la velocità angolare affinché la velocità massima (al centro) sia pari a 'speed'
-	var angular_speed = current_speed / amplitude if amplitude > 0 else 0.0
+	# Funzione sinusoidale: oscilla tra 0 e 1. 
+	# La velocità è massima a 0.5 e minima a 0 e 1.
+	current_value = (sin(elapsed_time) + 1.0) / 2.0
 	
-	time += delta * angular_speed
-	cursor.position.x = center_x + amplitude * sin(time)
+	# Calcolo fattore accuratezza (1.0 al centro, 0.0 ai bordi)
+	var accuracy_factor = 1.0 - (abs(current_value - 0.5) * 2.0)
+	var dynamic_color = Color.RED.lerp(Color.GREEN, accuracy_factor)
+	
+	# Applichiamo il colore allo sfondo della barra
+	if bar_container:
+		var sb = bar_container.get_theme_stylebox("normal").duplicate()
+		sb.bg_color = dynamic_color
+		bar_container.add_theme_stylebox_override("normal", sb)
+	
+	# Aggiorna la posizione visiva del cursore
+	if cursor_sprite and bar_container:
+		var bar_width = bar_container.size.x
+		var cursor_width = cursor_sprite.size.x
+		# Calcoliamo lo spazio utile affinché il cursore resti sempre dentro i bordi
+		cursor_sprite.position.x = current_value * (bar_width - cursor_width)
 
-	# Aggiorna visivamente il colore della barra in base alla posizione del cursore
-	# Rosso (Mancato) -> Giallo (Colpito) -> Verde (Perfetto)
-	var progress = get_qte_value()
-	var dist_from_center = abs(progress - 0.5) # 0.0 al centro, 0.5 agli estremi
+func _on_button_pressed():
+	if is_active:
+		_end_qte(current_value)
 
-	# Le soglie devono corrispondere a quelle in Game.gd (_on_qte_finished)
-	var perfect_threshold = 0.05 # (0.5 - 0.45)
-	var good_threshold = 0.2 # (0.5 - 0.3)
+func _create_visual_bar():
+	# Creiamo un pulsante trasparente che copre esattamente il tasto originale
+	bar_container = Button.new()
+	target_btn.add_child(bar_container)
+	bar_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	
+	# Stile della barra (sfondo scuro)
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.15, 0.15, 0.15, 1.0)
+	sb.set_border_width_all(2)
+	sb.border_color = Color.DIM_GRAY
+	bar_container.add_theme_stylebox_override("normal", sb)
+	bar_container.add_theme_stylebox_override("hover", sb)
+	bar_container.add_theme_stylebox_override("pressed", sb)
+	
+	bar_container.pressed.connect(_on_button_pressed)
+	
+	# Cursore SVG
+	cursor_sprite = TextureRect.new()
+	bar_container.add_child(cursor_sprite)
+	cursor_sprite.texture = load("res://art/cursor.svg")
+	cursor_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	cursor_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	
+	# Adattiamo la larghezza del cursore basandoci sull'altezza del pulsante.
+	# Questo lo rende alto quanto la barra e proporzionale.
+	var bar_h = target_btn.size.y
+	cursor_sprite.custom_minimum_size = Vector2(bar_h, bar_h)
 
-	if dist_from_center < perfect_threshold:
-		# Zona "Perfetto": Interpola da Giallo a Verde
-		var weight = 1.0 - (dist_from_center / perfect_threshold)
-		bar.color = Color.YELLOW.lerp(Color.GREEN, weight)
-	elif dist_from_center < good_threshold:
-		# Zona "Buono": Interpola da Rosso a Giallo
-		var range_size = good_threshold - perfect_threshold
-		var value_in_range = dist_from_center - perfect_threshold
-		var weight = 1.0 - (value_in_range / range_size)
-		bar.color = Color.RED.lerp(Color.YELLOW, weight)
-	else:
-		# Zona "Mancato": Rosso pieno
-		bar.color = Color.RED
+	cursor_sprite.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	cursor_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-func _input(event):
-	if not active:
-		return
-
-	if event.is_action_pressed("ui_accept"):
-		confirm_hit()
-
-# Gestisce il click del mouse sulla barra
-func _on_bar_gui_input(event):
-	if not active:
-		return
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		confirm_hit()
-
-# Conferma il risultato e invia il segnale
-func confirm_hit():
-	var value = get_qte_value()
-	qte_finished.emit(value)
-	stop()
-
-# Restituisce la posizione normalizzata del cursore (0.0 = sinistra, 1.0 = destra)
-# 0.5 rappresenta il centro esatto.
-func get_qte_value() -> float:
-	var min_x = bar.position.x
-	var max_x = bar.position.x + bar.size.x - cursor.size.x
-	return clamp((cursor.position.x - min_x) / (max_x - min_x), 0.0, 1.0)
+func _end_qte(final_value: float):
+	is_active = false
+	set_process(false)
+	
+	if bar_container:
+		bar_container.queue_free()
+		bar_container = null
+	
+	# --- Risoluzione Risultato ---
+	# Calcoliamo la distanza assoluta dal centro (0.5)
+	var distance = abs(final_value - 0.5)
+	
+	var result_text = tr("qte_result_miss")
+	var multiplier = 0.0
+	
+	if distance < 0.05: # Molto vicino al centro
+		result_text = tr("qte_result_perfect")
+		multiplier = 2.0
+	elif distance < 0.2: # Abbastanza vicino
+		result_text = tr("qte_result_good")
+		multiplier = 1.2
+	
+	game.text.text = result_text
+	
+	# Breve pausa per mostrare il risultato (Perfect/Good/Miss)
+	await get_tree().create_timer(1.0).timeout
+	
+	# Risoluzione della conseguenza del QTE
+	if context == "player_attack":
+		if game.combat_manager:
+			game.combat_manager.resolve_player_attack(multiplier)
+	
+	context = ""
+	qte_finished.emit(final_value)

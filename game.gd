@@ -74,11 +74,7 @@ var inventory: Array = []
 var current_entity_pronoun: String = ""
 var current_victory_scene: String = ""
 var current_entity_id: String = ""
-var was_in_combat: bool = false # Aggiunto per tracciare la vittoria in combattimento
-var qte_power_multiplier: float = 0.2 # Moltiplicatore per la velocit├á del QTE
-
-var qte_context: String = "" # Contesto per sapere perch├® ├¿ stato avviato il QTE
-signal target_clicked(target_type)
+var was_in_combat: bool = false
 var use_visual_health: bool = true
 var grayscale_material: ShaderMaterial
 var death_overlay: ColorRect
@@ -94,15 +90,8 @@ var current_scene: String = "start"
 # --- Risorse Condivise ---
 var custom_font = load("res://fonts/freecam v2.ttf")
 
-# --- UI Overlay References ---
-var growth_overlay: Control = null
-
 # --- Inizializzazione ---
 func _ready():
-	# QTE
-	if qte:
-		qte.qte_finished.connect(_on_qte_finished)
-	
 	# Setup Pulsante Long Press per Configurazione (Sopra le stat del player)
 	if player_box_container:
 		var stats_btn = LongPressButton.new()
@@ -151,7 +140,7 @@ func _ready():
 
 	# Iniezione Game nei manager
 	# Fornisce ai manager un riferimento a questo script principale per callback e accesso ai dati
-	for mgr in [combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager]:
+	for mgr in [qte, combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager]:
 		if mgr:
 			mgr.game = self
 
@@ -178,6 +167,8 @@ func _ready():
 	# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
 		# Inizializza effetti grafici per la morte
 		# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
+	
+	# Setup effetti grafici morte
 	_init_death_effects()
 	
 	# Tentativo di caricamento partita
@@ -358,6 +349,14 @@ func get_damage_type_icon(type_id: String) -> String:
 		return damage_types_data[type_id].get("icon", "")
 	return ""
 
+func disable_choices():
+	for btn in [b1, b2, b3]:
+		btn.disabled = true
+
+func enable_choices():
+	for btn in [b1, b2, b3]:
+		btn.disabled = false
+
 func update_stats():
 	# Aggiorna tutte le etichette dell'interfaccia utente (UI) con i valori correnti.
 	var inventory_names = []
@@ -503,6 +502,17 @@ func handle_choice(choice):
 					rune_manager.start_rune_casting()
 	if choice.has("next"):
 		show_scene(choice["next"])
+
+func start_qte_event(message_key: String = "qte_start_default", context: String = ""):
+	# Avvia l'interfaccia del QTE tramite il relativo manager
+	if qte:
+		qte.start_event(message_key, context)
+
+func start_growth_menu(victory_scene: String):
+	# Aggiorna la scena di destinazione e delega l'apertura al GrowthManager
+	current_victory_scene = victory_scene
+	if growth_manager:
+		growth_manager.open_growth_menu(story_data, player_energy, player_max_energy)
 
 # --- Preparazione Combattimento & Dialogo ---
 func _start_prepared_combat():
@@ -679,7 +689,9 @@ func _restart_game():
 	if player_stats: player_stats.material = null
 	if death_overlay: death_overlay.hide()
 
-	if growth_overlay: growth_overlay.queue_free(); growth_overlay = null
+	if growth_manager and growth_manager.growth_overlay:
+		growth_manager.growth_overlay.queue_free()
+		growth_manager.growth_overlay = null
 
 	show_scene("start")
 
@@ -700,271 +712,3 @@ func _clear_signals(button: Button):
 	# Riconnette il feedback aptico ogni volta che il pulsante viene pulito/preparato
 	if not button.pressed.is_connected(_trigger_haptic):
 		button.pressed.connect(_trigger_haptic)
-
-# --- Quick Time Event (QTE) ---
-func start_qte_event(message_key: String = "qte_start_default", context: String = ""):
-	disable_choices()
-	text.text = tr(message_key)
-	qte_context = context
-	
-	var speed_factor: float = 1.0
-	
-	# Calcola la velocit├á in base alla potenza del mostro (totale energia)
-	if current_entity_id != "" and entity_data.has(current_entity_id):
-		var entity = entity_data[current_entity_id]
-		var total_energy = 0.0
-		if entity.has("energy"):
-			for stat in entity["energy"]:
-				total_energy += stat.get("value", 0)
-		if total_energy > 0:
-			speed_factor = total_energy * qte_power_multiplier
-
-	if qte: qte.start(b1, speed_factor) # Passa b1 e la velocit├á calcolata
-
-func _on_qte_finished(value):
-	# Callback chiamata quando il QTE finisce. Calcola il risultato in base alla precisione.
-	var result_text = tr("qte_result_miss")
-	var multiplier = 0.0 # Un "MANCATO" non infligge danno
-	if value > 0.45 and value < 0.55:
-		result_text = tr("qte_result_perfect")
-		multiplier = 2.0
-	elif value > 0.3 and value < 0.7:
-		result_text = tr("qte_result_good")
-		multiplier = 1.2
-	text.text = result_text
-	
-	# Aspetta un attimo per far leggere il risultato del QTE al giocatore
-	await get_tree().create_timer(1.0).timeout
-	
-	# Gestisce il risultato del QTE in base al contesto
-	if qte_context == "player_attack":
-		if combat_manager:
-			combat_manager.resolve_player_attack(multiplier)
-	
-	qte_context = "" # Resetta il contesto
-	# I pulsanti verranno riattivati dal CombatManager al prossimo turno del giocatore
-
-func enable_target_selection():
-	# Abilita la modalit├á di selezione bersaglio (per magie o oggetti).
-	enable_choices()
-	text.text = tr("combat_select_target")
-	
-	# Opzione 1: Player
-	b1.text = tr("target_player")
-	b1.show()
-	_clear_signals(b1)
-	b1.pressed.connect(func(): target_clicked.emit("player"))
-	
-	# Opzione 2: Nemico
-	if current_entity_id != "" and combat_manager and combat_manager.current_entity_health > 0:
-		var e_data = entity_data.get(current_entity_id, {})
-		var e_name = e_data.get("name", "Nemico")
-		b2.text = tr(e_name)
-		b2.show()
-		_clear_signals(b2)
-		b2.pressed.connect(func(): target_clicked.emit("enemy"))
-	else:
-		b2.hide()
-
-	# Opzione 3: Indietro
-	b3.text = tr("combat_back")
-	b3.show()
-	_clear_signals(b3)
-	b3.pressed.connect(func(): target_clicked.emit("back"))
-
-func disable_target_selection():
-	# Nasconde i pulsanti di selezione bersaglio.
-	for btn in [b1, b2, b3]:
-		btn.hide()
-		_clear_signals(btn)
-
-func disable_choices():
-	for btn in [b1, b2, b3]:
-		btn.disabled = true
-
-func enable_choices():
-	for btn in [b1, b2, b3]:
-		btn.disabled = false
-
-# --- Menu Crescita (Level Up) ---
-func start_growth_menu(next_scene: String):
-	current_victory_scene = next_scene
-	
-	if not growth_manager:
-		show_scene(next_scene)
-		return
-		
-	# Prepara il manager per una nuova sessione
-	growth_manager.start_growth_session()
-	
-	# Crea e mostra l'overlay grafico
-	_create_growth_overlay()
-
-func _create_growth_overlay():
-	# Se esiste gi├á, rimuovilo per ricrearlo pulito
-	if growth_overlay:
-		growth_overlay.queue_free()
-	
-	# 1. Background scuro
-	growth_overlay = ColorRect.new()
-	growth_overlay.color = Color(0, 0, 0, 0.9)
-	growth_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	growth_overlay.mouse_filter = Control.MOUSE_FILTER_STOP # Blocca i click sotto
-	
-	# 2. Contenitore Centrale
-	var center_container = CenterContainer.new()
-	center_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	growth_overlay.add_child(center_container)
-	
-	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 20)
-	center_container.add_child(vbox)
-	
-	# Carica il font e imposta la dimensione standard per questo menu
-	var custom_font = load("res://fonts/freecam v2.ttf")
-	var font_size = 20
-	
-	# 3. Titolo e Punti Disponibili
-	var title_label = Label.new()
-	title_label.name = "TitleLabel"
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Applica font e dimensione personalizzati
-	title_label.add_theme_font_override("font", custom_font)
-	title_label.add_theme_font_size_override("font_size", font_size + 4) # Titolo leggermente pi├╣ grande per gerarchia visiva
-	vbox.add_child(title_label)
-	
-	# 4. Lista Statistiche
-	var stats_container = VBoxContainer.new()
-	stats_container.name = "StatsContainer"
-	stats_container.add_theme_constant_override("separation", 10)
-	vbox.add_child(stats_container)
-	
-	# Popola la lista delle statistiche
-	var player_energy_types = story_data.get("player", {}).get("energy", [])
-	var energy_type_definitions = story_data.get("energy_types", {})
-	
-	for energy_stat in player_energy_types:
-		var stat_id = energy_stat.get("type")
-		var stat_name_key = energy_type_definitions.get(stat_id, {}).get("name", stat_id)
-		var stat_name = tr(stat_name_key)
-		
-		var row = HBoxContainer.new()
-		row.name = "Row_" + stat_id
-		row.alignment = BoxContainer.ALIGNMENT_CENTER
-		
-		# Bottone Meno
-		var btn_minus = Button.new()
-		btn_minus.text = "Ô×û" # Sostituisce il testo con un'emoji
-		btn_minus.custom_minimum_size = Vector2(40, 40)
-		# Applica font e dimensione personalizzati
-		btn_minus.add_theme_font_override("font", custom_font)
-		btn_minus.add_theme_font_size_override("font_size", font_size)
-		btn_minus.pressed.connect(func(): 
-			if growth_manager.try_decrease_stat(stat_id):
-				_refresh_growth_ui()
-		)
-		row.add_child(btn_minus)
-		
-		# Label Nome Statistica (Colonna sinistra)
-		var lbl_name = Label.new()
-		lbl_name.name = "LabelName"
-		lbl_name.text = stat_name		
-		# Larghezza fissa precalcolata per evitare spostamenti
-		lbl_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl_name.custom_minimum_size = Vector2(160, 0) 
-		lbl_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		# Applica font e dimensione personalizzati
-		lbl_name.add_theme_font_override("font", custom_font)
-		lbl_name.add_theme_font_size_override("font_size", font_size)
-		row.add_child(lbl_name)
-
-		# Label Valore Statistica (Colonna destra)
-		var lbl_val = Label.new()
-		lbl_val.name = "LabelValue"
-		lbl_val.text = "0"
-		# Larghezza fissa precalcolata per ospitare valore e bonus
-		lbl_val.custom_minimum_size = Vector2(120, 0) 
-		lbl_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		lbl_val.add_theme_font_override("font", custom_font)
-		lbl_val.add_theme_font_size_override("font_size", font_size)
-		row.add_child(lbl_val)
-		
-		# Bottone Pi├╣
-		var btn_plus = Button.new()
-		btn_plus.text = "Ô×ò" # Sostituisce il testo con un'emoji
-		btn_plus.custom_minimum_size = Vector2(40, 40)
-		btn_plus.add_theme_font_override("font", custom_font)
-		btn_plus.add_theme_font_size_override("font_size", font_size)
-		btn_plus.pressed.connect(func():
-			if growth_manager.try_increase_stat(stat_id):
-				_refresh_growth_ui()
-		)
-		row.add_child(btn_plus)
-		
-		stats_container.add_child(row)
-
-	# 5. Bottoni Azione (Reset / Conferma)
-	var actions_row = HBoxContainer.new()
-	actions_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	actions_row.add_theme_constant_override("separation", 20)
-	vbox.add_child(actions_row)
-	
-	var btn_reset = Button.new()
-	btn_reset.text = tr("growth_btn_reset")
-	btn_reset.add_theme_font_override("font", custom_font)
-	btn_reset.add_theme_font_size_override("font_size", font_size)
-	btn_reset.pressed.connect(func():
-		growth_manager.reset_changes()
-		_refresh_growth_ui()
-	)
-	actions_row.add_child(btn_reset)
-	
-	var btn_confirm = Button.new()
-	btn_confirm.text = tr("growth_btn_confirm")
-	btn_confirm.add_theme_font_override("font", custom_font)
-	btn_confirm.add_theme_font_size_override("font_size", font_size)
-	btn_confirm.pressed.connect(func():
-		growth_manager.confirm_changes()
-		growth_overlay.queue_free()
-		growth_overlay = null
-		enable_choices()
-	)
-	actions_row.add_child(btn_confirm)
-	
-	add_child(growth_overlay)
-	_refresh_growth_ui()
-
-func _refresh_growth_ui():
-	if not growth_overlay or not growth_manager:
-		return
-	
-	# Aggiorna Titolo
-	var energy = growth_manager.available_energy
-	var title_lbl = growth_overlay.find_child("TitleLabel", true, false)
-	if title_lbl:
-		title_lbl.text = tr("growth_menu_title") % energy
-	
-	# Aggiorna Righe
-	var stats_container = growth_overlay.find_child("StatsContainer", true, false)
-	if stats_container:
-		for child in stats_container.get_children():
-			var stat_id = child.name.replace("Row_", "")
-			var lbl_name = child.get_node_or_null("LabelName")
-			var lbl_val = child.get_node_or_null("LabelValue")
-			
-			if lbl_name and lbl_val:
-				var energy_type_definitions = story_data.get("energy_types", {})
-				var stat_name_key = energy_type_definitions.get(stat_id, {}).get("name", stat_id)
-				var base_val = player_max_energy.get(stat_id, 0)
-				var current_val = player_energy.get(stat_id, 0)
-				var added_val = growth_manager.temp_changes.get(stat_id, 0)
-				
-				lbl_name.text = tr(stat_name_key)
-				
-				# Calcola il valore totale (base + bonus temporaneo)
-				var total_val = base_val + added_val
-				
-				# Mostra il valore totale
-				lbl_val.text = str(total_val)
-				lbl_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				
