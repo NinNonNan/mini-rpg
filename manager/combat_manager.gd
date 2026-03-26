@@ -38,6 +38,8 @@ extends Node  # Non è un elemento visivo, quindi basta Node
 #
 var game
 
+signal target_selected(target_type)
+
 
 # =========================================================
 # STATO DEL COMBATTIMENTO
@@ -211,6 +213,7 @@ func prepare_spell_cast(spell_id: String):
 		return
 
 	pending_spell_id = spell_id
+	var spell_type = game.special_manager.spells[spell_id].get("type", "")
 	
 	# Cambia UI per chiedere il bersaglio
 	game.text.text = game.tr("combat_select_target")
@@ -226,14 +229,14 @@ func prepare_spell_cast(spell_id: String):
 	game.b3.pressed.connect(cancel_spell_selection)
 	
 	# Attiva le icone cliccabili
-	game.enable_target_selection()
-	game.target_clicked.connect(_on_target_chosen, CONNECT_ONE_SHOT)
+	enable_target_selection(spell_type)
+	target_selected.connect(_on_target_chosen, CONNECT_ONE_SHOT)
 
 func cancel_spell_selection():
-	game.disable_target_selection()
+	disable_target_selection()
 	# Disconnette il segnale se era attivo (per evitare doppie chiamate future)
-	if game.target_clicked.is_connected(_on_target_chosen):
-		game.target_clicked.disconnect(_on_target_chosen)
+	if target_selected.is_connected(_on_target_chosen):
+		target_selected.disconnect(_on_target_chosen)
 	open_special_menu()
 
 # FASE 2: SELEZIONE BERSAGLIO
@@ -241,7 +244,7 @@ func cancel_spell_selection():
 # Callback chiamata quando il giocatore clicca su un'icona (Player o Nemico).
 
 func _on_target_chosen(target_type: String):
-	game.disable_target_selection()
+	disable_target_selection()
 	
 	# Determina l'ID del bersaglio
 	var target_id = ""
@@ -373,18 +376,18 @@ func _on_rune_target_requested(spell_data):
 	game.b3.pressed.connect(cancel_rune_selection)
 	
 	# Attiva le icone cliccabili sui bersagli
-	game.enable_target_selection()
-	game.target_clicked.connect(_on_rune_target_chosen, CONNECT_ONE_SHOT)
+	enable_target_selection(spell_data.get("type", "neutral"))
+	target_selected.connect(_on_rune_target_chosen, CONNECT_ONE_SHOT)
 
 func cancel_rune_selection():
-	game.disable_target_selection()
-	if game.target_clicked.is_connected(_on_rune_target_chosen):
-		game.target_clicked.disconnect(_on_rune_target_chosen)
+	disable_target_selection()
+	if target_selected.is_connected(_on_rune_target_chosen):
+		target_selected.disconnect(_on_rune_target_chosen)
 	# Se annulli dopo aver castato le rune, torni al menu principale ma hai perso l'occasione di lanciare.
 	show_combat_buttons()
 
 func _on_rune_target_chosen(target_type):
-	game.disable_target_selection()
+	disable_target_selection()
 	
 	var target_id = ""
 	if target_type == "player": target_id = "player"
@@ -676,6 +679,64 @@ func entity_turn():
 
 		# Torna il turno del giocatore
 		show_combat_buttons()
+
+func enable_target_selection(action_type: String = ""):
+	# Rendi i contenitori della UI intercettatori di click per la selezione bersaglio
+	if game.player_box_container:
+		# Colore dinamico: verde se cura (affinità), rosso se danno
+		game.player_box_container.modulate = _get_color_for_effect("player", action_type)
+		game.player_box_container.mouse_filter = Control.MOUSE_FILTER_STOP
+		if not game.player_box_container.gui_input.is_connected(_on_player_target_input):
+			game.player_box_container.gui_input.connect(_on_player_target_input)
+		
+		# Disabilitiamo il pulsante config stats affinché non blocchi il click del target
+		var cfg_btn = game.player_box_container.find_child("StatsConfigButton", true, false)
+		if cfg_btn: cfg_btn.mouse_filter = Control.MOUSE_FILTER_PASS
+	
+	if game.enemy_stats_box:
+		# Colore dinamico per il nemico
+		game.enemy_stats_box.modulate = _get_color_for_effect("enemy", action_type)
+		game.enemy_stats_box.mouse_filter = Control.MOUSE_FILTER_STOP
+		if not game.enemy_stats_box.gui_input.is_connected(_on_enemy_target_input):
+			game.enemy_stats_box.gui_input.connect(_on_enemy_target_input)
+
+func disable_target_selection():
+	if game.player_box_container:
+		game.player_box_container.modulate = Color.WHITE
+		game.player_box_container.mouse_filter = Control.MOUSE_FILTER_PASS
+		if game.player_box_container.gui_input.is_connected(_on_player_target_input):
+			game.player_box_container.gui_input.disconnect(_on_player_target_input)
+		
+		# Ripristiniamo il pulsante config stats
+		var cfg_btn = game.player_box_container.find_child("StatsConfigButton", true, false)
+		if cfg_btn: cfg_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	if game.enemy_stats_box:
+		game.enemy_stats_box.modulate = Color.WHITE
+		game.enemy_stats_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if game.enemy_stats_box.gui_input.is_connected(_on_enemy_target_input):
+			game.enemy_stats_box.gui_input.disconnect(_on_enemy_target_input)
+
+func _on_player_target_input(event: InputEvent):
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		target_selected.emit("player")
+
+func _on_enemy_target_input(event: InputEvent):
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		target_selected.emit("enemy")
+
+func _get_color_for_effect(target_type: String, action_type: String) -> Color:
+	var affinities = []
+	if target_type == "player":
+		affinities = game.story_data.get("player", {}).get("affinity", [])
+	else:
+		# Recupera le affinità dell'entità corrente
+		var entity_def = game.entity_data.get(current_entity_id, {})
+		affinities = entity_def.get("affinity", [])
+	
+	if action_type != "" and action_type in affinities:
+		return Color(0.8, 1.2, 0.8) # Verde (Cura/Affinità)
+	return Color(1.2, 0.8, 0.8) # Rosso (Danno/Ostilità)
 
 # =========================================================
 # CONTROLLO VITTORIA
