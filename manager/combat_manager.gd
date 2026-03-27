@@ -91,7 +91,10 @@ func get_player_evasion() -> int:
 	var phys_sum = 0
 	var energy_types_def = game.story_data.get("energy_types", {})
 	
-	for type_id in game.player_energy.keys():
+	if not game.stats_manager:
+		return 0
+		
+	for type_id in game.stats_manager.player_energy.keys():
 		var def = energy_types_def.get(type_id, {})
 		if def.get("bonus") == "evasion":
 			phys_sum += game.get_player_energy_value(type_id)
@@ -647,8 +650,8 @@ func entity_turn():
 	game.update_stats()
 
 	if game.health <= 0:
-
-		game.game_over()
+		# La morte è già gestita dal setter di game.health -> StatsManager -> DeathManager
+		return
 
 	else:
 

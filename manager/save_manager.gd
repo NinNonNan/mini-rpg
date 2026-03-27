@@ -11,8 +11,8 @@ func save_game():
 	
 	var data = {
 		"current_scene": game.current_scene,
-		"player_energy": game.player_energy,
-		"player_max_energy": game.player_max_energy,
+		"player_energy": game.stats_manager.player_energy if game.stats_manager else {},
+		"player_max_energy": game.stats_manager.player_max_energy if game.stats_manager else {},
 		"inventory": game.item_manager.inventory if game.item_manager else [],
 		"equipment": game.item_manager.equipment if game.item_manager else {},
 		"current_entity_id": game.current_entity_id,
@@ -44,8 +44,11 @@ func load_game() -> bool:
 		
 	# Ripristino stato
 	if data.has("current_scene"): game.current_scene = data["current_scene"]
-	if data.has("player_energy"): game.player_energy = data["player_energy"]
-	if data.has("player_max_energy"): game.player_max_energy = data["player_max_energy"]
+
+	if game.stats_manager:
+		if data.has("player_energy"): game.stats_manager.player_energy = data["player_energy"]
+		if data.has("player_max_energy"): game.stats_manager.player_max_energy = data["player_max_energy"]
+		game.stats_manager.stats_changed.emit()
 	
 	if game.item_manager:
 		if data.has("inventory"): game.item_manager.inventory = data["inventory"]

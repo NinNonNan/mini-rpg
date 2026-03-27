@@ -36,34 +36,30 @@ extends Control
 @onready var stats_manager = $Manager/Stats # Richiede script StatsManager
 @onready var save_manager = $Manager/Save as SaveManager
 
-# --- Stato del Gioco ---
-var player_energy: Dictionary = {}
-var player_max_energy: Dictionary = {}
-
 # --- Accessori di Propriet├á (Getter/Setter) ---
 # --- Compatibilit├á (Bridge) ---
 # Queste propriet├á permettono agli altri script di usare game.health 
-# mentre noi usiamo il sistema dinamico player_energy sotto il cofano.
+# delegando la logica allo StatsManager.
 var health: int:
-	get: return player_energy.get("life", 0)
-	set(value): modify_player_energy("life", value - player_energy.get("life", 0))
+	get: return get_player_energy_value("life")
+	set(value): modify_player_energy("life", value - get_player_energy_value("life"))
 var max_health: int:
-	get: return player_max_energy.get("life", 0)
-	set(value): player_max_energy["life"] = value
+	get: return stats_manager.player_max_energy.get("life", 0) if stats_manager else 0
+	set(value): if stats_manager: stats_manager.player_max_energy["life"] = value
 
 var mana: int:
-	get: return player_energy.get("magic", 0)
-	set(value): modify_player_energy("magic", value - player_energy.get("magic", 0))
+	get: return get_player_energy_value("magic")
+	set(value): modify_player_energy("magic", value - get_player_energy_value("magic"))
 var max_mana: int:
-	get: return player_max_energy.get("magic", 0)
-	set(value): player_max_energy["magic"] = value
+	get: return stats_manager.player_max_energy.get("magic", 0) if stats_manager else 0
+	set(value): if stats_manager: stats_manager.player_max_energy["magic"] = value
 
 var mood: int:
-	get: return player_energy.get("mood", 0)
-	set(value): modify_player_energy("mood", value - player_energy.get("mood", 0))
+	get: return get_player_energy_value("mood")
+	set(value): modify_player_energy("mood", value - get_player_energy_value("mood"))
 var max_mood: int:
-	get: return player_max_energy.get("mood", 0)
-	set(value): player_max_energy["mood"] = value
+	get: return stats_manager.player_max_energy.get("mood", 0) if stats_manager else 0
+	set(value): if stats_manager: stats_manager.player_max_energy["mood"] = value
 
 # --- Variabili di Flusso ---
 var current_entity_pronoun: String = ""
@@ -117,6 +113,8 @@ func _ready():
 		push_error(tr("error_rune_manager_node_missing"))
 	if not stats_manager:
 		push_warning(tr("warn_stats_manager_missing"))
+	else:
+		stats_manager.stats_changed.connect(update_stats)
 	if not save_manager:
 		push_warning("SaveManager non trovato in $Manager/Save")
 
@@ -209,15 +207,9 @@ func _load_story():
 	if player_data.is_empty():
 		player_data = json_data.get("player", {})
 
-	if player_data.has("energy"):
-		player_energy.clear()
-		player_max_energy.clear()
-		for stat in player_data.get("energy", []):
-			var type_id = stat.get("type")
-			if type_id:
-				var value = int(stat.get("value", 0))
-				player_max_energy[type_id] = value
-				player_energy[type_id] = value
+	if player_data.has("energy") and stats_manager:
+		stats_manager.initialize_player_stats(player_data)
+
 	if player_icon and player_data.has("icon") and player_data["icon"] != "":
 		player_icon.texture = load(player_data["icon"])
 
@@ -242,29 +234,13 @@ func _load_translations(lang_code: String = "it"):
 
 # --- Gestione Statistiche Giocatore ---
 func get_player_energy_value(type_id: String) -> int:
-	# Restituisce il valore corrente di una statistica (es. "life", "magic")
-	return player_energy.get(type_id, 0)
+	if stats_manager:
+		return stats_manager.player_energy.get(type_id, 0)
+	return 0
 
 func modify_player_energy(type_id: String, amount: int):
-	# Modifica una statistica del giocatore e gestisce i limiti (min/max).
-	if not player_energy.has(type_id):
-		return
-
-	var current_value = player_energy[type_id]
-	var max_value = player_max_energy.get(type_id, 0)
-	var new_value = current_value + amount
-
-	if type_id == "life":
-		# La vita pu├▓ scendere sotto lo 0 per mostrare il danno in eccesso
-		# Se scende a 0 o meno, attiva il Game Over.
-		player_energy[type_id] = int(min(new_value, max_value))
-		if player_energy.get("life", 0) <= 0:
-			if death_manager: death_manager.handle_game_over()
-	else:
-		# Le altre statistiche sono bloccate tra 0 e il loro massimo.
-		player_energy[type_id] = clampi(new_value, 0, max_value)
-
-	update_stats()
+	if stats_manager:
+		stats_manager.modify_player_energy(type_id, amount)
 
 func get_energy_string(type_id: String, amount: int, max_amount: int = -1) -> String:
 	# Formatta una stringa per visualizzare una statistica (Icona + Valore).
@@ -342,7 +318,7 @@ func update_stats():
 			var type_id = stat_def.get("type")
 			if type_id:
 				var current_value = get_player_energy_value(type_id)
-				var max_value = player_max_energy.get(type_id, 0)
+				var max_value = stats_manager.player_max_energy.get(type_id, 0) if stats_manager else 0
 				stats_lines.append(get_energy_string(type_id, current_value, max_value))
 		
 		# Aggiungi l'inventario
@@ -452,7 +428,7 @@ func start_growth_menu(victory_scene: String):
 	# Aggiorna la scena di destinazione e delega l'apertura al GrowthManager
 	current_victory_scene = victory_scene
 	if growth_manager:
-		growth_manager.open_growth_menu(story_data, player_energy, player_max_energy)
+		growth_manager.open_growth_menu(story_data, stats_manager.player_energy, stats_manager.player_max_energy)
 
 # --- Preparazione Combattimento & Dialogo ---
 func _start_prepared_combat():

@@ -279,8 +279,8 @@ func confirm_changes():
 		var amount = temp_changes[stat_type]
 		if amount > 0:
 			# 1. Aumenta il valore MASSIMO della statistica
-			var current_max = game.player_max_energy.get(stat_type, 0)
-			game.player_max_energy[stat_type] = current_max + amount
+			var current_max = _player_max_energy_ref.get(stat_type, 0)
+			_player_max_energy_ref[stat_type] = current_max + amount
 			
 			# 2. Aumenta anche il valore ATTUALE (cura/ripristino parziale)
 			game.modify_player_energy(stat_type, amount)

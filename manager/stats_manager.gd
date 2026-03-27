@@ -1,27 +1,79 @@
 # =========================================================
-# STATS MANAGER
-# =========================================================
-# Gestisce il menu di configurazione del personaggio.
-#
-# Funzionalità principali:
-# - Visualizzazione e ordinamento delle statistiche (UI dinamica).
-# - Navigazione dell'inventario.
-# - Gestione dell'equipaggiamento (spostamento oggetti Zaino <-> Slot).
-#
-# Questo manager crea e distrugge la propria interfaccia (popup) su richiesta.
-
 class_name StatsManager
 extends Control
 
-# Riferimento al gioco principale.
+# =========================================================
+# STATS MANAGER
+# =========================================================
+# Gestisce lo stato vitale, le statistiche e la configurazione del personaggio.
+#
+# Funzionalità principali:
+# - Gestione centralizzata di HP, MP e altre energie del giocatore.
+# - Visualizzazione e ordinamento dinamico delle statistiche nell'HUD.
+# - Navigazione dell'inventario e gestione dell'equipaggiamento.
+# - Interfaccia di configurazione dinamica (Popup).
+#
+# Scopo narrativo: Rappresenta la consapevolezza del protagonista 
+# riguardo alle proprie capacità fisiche, mentali e alle risorse accumulate.
+
+## Riferimento al gioco principale (Game.gd).
 var game: Game
-# Riferimento al gestore degli oggetti (senza tipo statico per permettere duck-typing).
+## Riferimento al gestore degli oggetti (ItemManager.gd).
 var item_manager
 
-# Riferimenti ai nodi UI generati dinamicamente
+# --- Stato del Giocatore ---
+## Valori correnti delle energie (life, magic, mood, ecc.).
+var player_energy: Dictionary = {}
+## Valori massimi delle energie.
+var player_max_energy: Dictionary = {}
+
+# --- Segnali ---
+## Emesso ogni volta che una statistica viene modificata o inizializzata.
+signal stats_changed
+
+## Riferimento al pannello principale della UI di configurazione.
 var config_panel: PanelContainer
+## Contenitore per la lista dinamica delle statistiche nel menu.
 var items_container: VBoxContainer
 
+## Inizializza i dizionari delle energie dai dati del giocatore.
+## Input: player_data (Dictionary) - Dati dell'entità giocatore carichi dal database.
+## Output: Nessuno.
+func initialize_player_stats(player_data: Dictionary):
+	player_energy.clear()
+	player_max_energy.clear()
+	
+	if player_data.has("energy"):
+		for stat in player_data.get("energy", []):
+			var type_id = stat.get("type")
+			if type_id:
+				var value = int(stat.get("value", 0))
+				player_max_energy[type_id] = value
+				player_energy[type_id] = value
+	stats_changed.emit()
+
+## Modifica una statistica del giocatore e gestisce i limiti (min/max).
+## Input: type_id (String) - ID della statistica; amount (int) - Quantità da aggiungere o sottrarre.
+## Output: Nessuno.
+func modify_player_energy(type_id: String, amount: int):
+	if not player_energy.has(type_id):
+		return
+
+	var current_value = player_energy[type_id]
+	var max_value = player_max_energy.get(type_id, 0)
+	var new_value = current_value + amount
+
+	if type_id == "life":
+		# La vita può scendere sotto lo 0, ma se accade innesca il Game Over.
+		player_energy[type_id] = int(min(new_value, max_value))
+		if player_energy.get("life", 0) <= 0:
+			if game and game.death_manager: game.death_manager.handle_game_over()
+	else:
+		player_energy[type_id] = clampi(new_value, 0, max_value)
+
+	stats_changed.emit()
+
+## Inizializzazione del nodo e configurazione del rendering top-level.
 func _ready():
 	# Si nasconde e occupa tutto lo schermo per bloccare i click sotto quando aperto
 	visible = false
@@ -31,7 +83,9 @@ func _ready():
 	top_level = true
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-# Apre il menu di configurazione e mette in pausa le interazioni di gioco.
+## Apre il menu di configurazione e disabilita le interazioni del gioco principale.
+## Input: Nessuno.
+## Output: Nessuno.
 func open_config_menu():
 	if not game: return
 	
@@ -44,7 +98,9 @@ func open_config_menu():
 	# Disabilita le scelte nel gioco mentre il menu è aperto
 	game.disable_choices()
 
-# Chiude il menu, distrugge l'interfaccia e riprende il gioco.
+## Chiude il menu, distrugge l'interfaccia e riabilita i controlli di gioco.
+## Input: Nessuno.
+## Output: Nessuno.
 func close_config_menu():
 	visible = false
 	if config_panel:
@@ -58,7 +114,9 @@ func close_config_menu():
 	# (game.update_stats() lo fa già, ma utile per sicurezza)
 	game.enable_choices()
 
-# Costruisce l'intera interfaccia utente via codice.
+## Costruisce programmaticamente l'intera interfaccia del menu.
+## Input: Nessuno.
+## Output: Nessuno.
 func _build_ui():
 	# Pulisce eventuale UI precedente
 	if config_panel: config_panel.queue_free()
@@ -109,22 +167,25 @@ func _build_ui():
 	tabs.add_child(inv_page)
 	_build_inventory_tab(inv_page)
 	
-	# Pulsante Chiudi
+	# Pulsante di chiusura
 	var close_btn = Button.new()
 	close_btn.text = tr("stats_btn_close")
 	_apply_font(close_btn, 20)
 	close_btn.pressed.connect(close_config_menu)
 	main_vbox.add_child(close_btn)
 
-# Applica il font globale e la dimensione specificata a un controllo.
+## Applica il font personalizzato e la dimensione specificata a un nodo Control.
+## Input: node (Control) - Il nodo target; font_size (int) - Dimensione del testo.
+## Output: Nessuno.
 func _apply_font(node: Control, font_size: int):
 	var font = load("res://fonts/freecam v2.ttf")
 	if font:
 		node.add_theme_font_override("font", font)
 	node.add_theme_font_size_override("font_size", font_size)
 
-# Aggiorna la lista delle statistiche nel primo tab.
-# Permette di riordinare le stat visualizzate nell'HUD principale.
+## Rigenera la lista delle statistiche ordinabili nel tab dedicato.
+## Input: Nessuno.
+## Output: Nessuno.
 func _refresh_stats_list():
 	if not items_container: return
 	for child in items_container.get_children():
@@ -182,7 +243,9 @@ func _refresh_stats_list():
 		btn_down.pressed.connect(_move_item.bind(i, 1))
 		row.add_child(btn_down)
 
-# Gestisce lo spostamento su/giù di una statistica nella lista.
+## Scambia la priorità di visualizzazione tra due statistiche.
+## Input: index (int) - Indice attuale; direction (int) - Direzione dello spostamento (-1 o 1).
+## Output: Nessuno.
 func _move_item(index: int, direction: int):
 	var energy_defs: Array = game.story_data.get("player", {}).get("energy", [])
 	
@@ -211,7 +274,9 @@ func _move_item(index: int, direction: int):
 # --- GESTIONE INVENTARIO UI ---
 # =========================================================
 
-# Costruisce il contenuto del tab Inventario/Equipaggiamento.
+## Costruisce la sezione relativa all'equipaggiamento e allo zaino nel secondo tab.
+## Input: container (VBoxContainer) - Il nodo genitore in cui iniettare la UI.
+## Output: Nessuno.
 func _build_inventory_tab(container: VBoxContainer):
 	# Pulisce contenuto
 	for c in container.get_children():
@@ -330,7 +395,9 @@ func _build_inventory_tab(container: VBoxContainer):
 				btn_equip.pressed.connect(_show_slot_selection.bind(item_id, container))
 				row.add_child(btn_equip)
 
-# Mostra la schermata di selezione dello slot dove equipaggiare l'oggetto.
+## Mostra i pulsanti per la scelta dello slot di destinazione durante l'equipaggiamento.
+## Input: item_id (String) - ID dell'oggetto; container (VBoxContainer) - Container UI.
+## Output: Nessuno.
 func _show_slot_selection(item_id: String, container: VBoxContainer):
 	# Svuota il container per mostrare solo la selezione slot
 	for c in container.get_children():
@@ -364,7 +431,9 @@ func _show_slot_selection(item_id: String, container: VBoxContainer):
 	btn_cancel.pressed.connect(func(): _build_inventory_tab(container))
 	container.add_child(btn_cancel)
 
-# Gestisce l'utilizzo di un oggetto consumabile (es. Pozione)
+## Esegue l'azione di utilizzo di un oggetto e aggiorna l'interfaccia.
+## Input: item_id (String) - ID dell'oggetto; container (VBoxContainer) - Container UI.
+## Output: Nessuno.
 func _use_item(item_id: String, container: VBoxContainer):
 	if not game or not item_manager: return
 	
