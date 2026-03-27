@@ -25,6 +25,7 @@ extends Control
 # --- Manager di Sistema ---
 # Riferimenti ai sottosistemi logici (Combattimento, Dialogo, Oggetti, ecc.)
 @onready var combat_manager = $Manager/Combat as CombatManager
+@onready var data_manager = $Manager/Data as DataManager
 @onready var dialogue_manager = $Manager/Dialogue as DialogueManager
 @onready var empathy_manager = $Manager/Empathy as EmpathyManager
 @onready var item_manager = $Manager/Item
@@ -130,7 +131,7 @@ func _ready():
 
 	# Iniezione Game nei manager
 	# Fornisce ai manager un riferimento a questo script principale per callback e accesso ai dati
-	for mgr in [qte, combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager, rune_manager]:
+	for mgr in [qte, combat_manager, data_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager, rune_manager]:
 		if mgr:
 			mgr.game = self
 	
@@ -167,46 +168,21 @@ func _ready():
 
 # --- Caricamento JSON ---
 func _load_story():
-	# ATTENZIONE: I percorsi dei file JSON sono fissi in res://data/.
-	# NON MODIFICARE questi percorsi a meno di una specifica richiesta.
-	var json_data = StoryLoader.load_json_file("res://data/story.json")
-	if json_data == null:
-		text.text = tr("error_story_load_short")
+	if not data_manager:
+		push_error("DataManager non trovato!")
 		return
-	story_data = json_data
-	story = json_data.get("scenes", {})
-	entity_data = json_data.get("entities", {})
 	
-	# Caricamento definizioni (energy_types, damage_types, weather, spells)
-	# ATTENZIONE: Percorso fisso in res://data/. NON MODIFICARE.
-	var definitions_json = StoryLoader.load_json_file("res://data/definitions.json")
-	if definitions_json != null:
-		# Uniamo le definizioni in story_data per mantenere la compatibilit├á
-		story_data.merge(definitions_json, true)
-		damage_types_data = definitions_json.get("damage_types", {})
-	else:
-		push_error(tr("error_definitions_load"))
+	# Delega il caricamento e sincronizza i riferimenti locali (Bridge)
+	data_manager.load_all_data()
+	story_data = data_manager.story_data
+	story = data_manager.story
+	entity_data = data_manager.entity_data
+	damage_types_data = data_manager.damage_types_data
 
 	if item_manager:
 		item_manager.load_items()
-	
-	# Carica dati entit├á (player e nemici) da file separato
-	var entities_json = StoryLoader.load_json_file("res://data/entities.json")
-	var player_data = {}
 
-	if entities_json != null:
-		entity_data = entities_json.get("entities", {})
-		if entities_json.has("player"):
-			player_data = entities_json.get("player", {})
-			# Aggiorna story_data con i dati del player per la UI
-			story_data["player"] = player_data
-	else:
-		push_error("Errore caricamento entities.json!")
-		return
-
-	if player_data.is_empty():
-		player_data = json_data.get("player", {})
-
+	var player_data = story_data.get("player", {})
 	if player_data.has("energy") and stats_manager:
 		stats_manager.initialize_player_stats(player_data)
 

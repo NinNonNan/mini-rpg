@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://d1qiyot78sli2" path="res://game.gd" id="1_80nbo"]
 [ext_resource type="Script" uid="uid://ivg5beicys7p" path="res://manager/dialogue_manager.gd" id="2_feb5d"]
 [ext_resource type="FontFile" uid="uid://bjxpha2a8bpoo" path="res://fonts/freecam v2.ttf" id="2_hve3p"]
+[ext_resource type="Script" uid="uid://1g4dc41lbg8f" path="res://manager/data_manager.gd" id="3_7sc4i"]
 [ext_resource type="Script" uid="uid://cfht24jt8567h" path="res://manager/combat_manager.gd" id="3_fc0e3"]
 [ext_resource type="Script" uid="uid://bhf1or8jp5dqa" path="res://manager/empathy_manager.gd" id="4_fc0e3"]
 [ext_resource type="Script" uid="uid://bgde6rbxnopxg" path="res://manager/item_manager.gd" id="5_7jktm"]
@@ -182,6 +183,9 @@ theme_override_fonts/font = ExtResource("2_hve3p")
 theme_override_font_sizes/font_size = 20
 
 [node name="Manager" type="Node" parent="." unique_id=38976104]
+
+[node name="Data" type="Node" parent="Manager" unique_id=2125709444]
+script = ExtResource("3_7sc4i")
 
 [node name="Dialogue" type="Node" parent="Manager" unique_id=1889850160]
 script = ExtResource("2_feb5d")
