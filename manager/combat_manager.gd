@@ -1,78 +1,51 @@
 # =========================================================
 # COMBAT MANAGER
 # =========================================================
-# Gestisce tutta la logica del combattimento:
-# - Inizializzazione dello scontro (caricamento dati nemico).
-# - Gestione Turni (Giocatore -> Azione -> Nemico -> Giocatore).
-# - Calcolo Danni (Fisici, Magici, Runici).
-# - Gestione Resistenze/Debolezze/Affinità.
-# - Integrazione con QTE (Quick Time Events) per attacchi fisici.
-# - Integrazione con RuneManager per combo magiche.
-# - Analisi del nemico (via EmpathyManager).
-# - Uso oggetti (via ItemManager).
-# - fuga
-# - vittoria o sconfitta
+# Gestisce la logica dei combattimenti a turni.
 #
-# La UI e lo stato globale rimangono gestiti da Game.
-# Questo manager si occupa solo della logica di combattimento.
-
-# NOTA IMPORTANTE:
-# NON inserire stringhe di testo hardcoded (es. "Hai lanciato...") direttamente nel codice.
-# Usa sempre tr("chiave_json") e definisci la chiave corrispondente nel file data/it.json.
+# Funzionalità principali:
+# - Gestione turni (Giocatore <-> Nemico).
+# - Calcolo danni (Fisici, Magici, Runici) e resistenze/debolezze.
+# - Integrazione con QTE per attacchi fisici e RuneManager per la magia.
+# - Gestione della selezione bersaglio e feedback visivo.
+# - Risoluzione degli scontri (Vittoria/Fuga/Sconfitta).
+#
+# Scopo narrativo: Tradurre le interazioni ostili in una sfida tattica 
+# basata sulle energie e sulle affinità elementali.
 
 class_name CombatManager
-extends Node  # Non è un elemento visivo, quindi basta Node
+extends Node
 
-
-# =========================================================
-# RIFERIMENTO AL GAME
-# =========================================================
-# Permette al CombatManager di accedere a:
-# - UI (text, pulsanti)
-# - dati globali (entity_data, inventory)
-# - altri manager (ItemManager, EmpathyManager)
-#
-# Questo riferimento viene assegnato in Game._ready():
-#
-# combat_manager.game = self
-#
-var game
-
+# --- Segnali ---
+## Emesso quando un bersaglio viene selezionato durante una fase di puntamento.
 signal target_selected(target_type)
 
+# --- Riferimenti Esterni ---
+## Riferimento al gioco principale (Game.gd). Iniettato in Game._ready().
+var game
 
-# =========================================================
-# STATO DEL COMBATTIMENTO
-# =========================================================
-
-# ID dell'entità che stiamo combattendo
+# --- Stato del Combattimento ---
+## ID dell'entità attualmente in combattimento.
 var current_entity_id: String = ""
-
-# Salute attuale dell'entità (HP)
-var current_entity_health = 0
-
-# Dati del danno dell'entità (può essere un int o un Array di dizionari)
-# Usato per determinare quanto male fa il nemico quando attacca.
+## Salute attuale del nemico.
+var current_entity_health: int = 0
+## Dati del danno del nemico (int o Array di dizionari).
 var current_entity_damage_data = null
+## ID della scena da caricare in caso di vittoria.
+var current_victory_scene: String = ""
 
-# Scena da caricare dopo la vittoria (definita nel JSON della storia)
-var current_victory_scene = ""
-
-# Variabile temporanea per la magia selezionata in attesa di bersaglio
+# --- Cache Temporanea Azioni ---
+## ID della magia selezionata in attesa di selezione bersaglio.
 var pending_spell_id: String = ""
-
-# Variabile temporanea per i dati della combo runica (risultato del RuneManager) in attesa di bersaglio
+## Dati della combo runica calcolata in attesa di selezione bersaglio.
 var pending_rune_data: Dictionary = {}
 
-
-# =========================================================
-# INIZIO COMBATTIMENTO
-# =========================================================
-# Viene chiamata dal Game quando un incontro diventa
-# ostile oppure quando il dialogo fallisce.
-
+## Avvia un nuovo scontro inizializzando i dati del nemico e la UI.
+## Input: 
+## - entity_id (String): L'ID del nemico nel database.
+## - victory_scene (String): La scena successiva in caso di successo.
+## Output: Nessuno.
 func start_combat(entity_id: String, victory_scene: String):
-
 	current_entity_id = entity_id
 	current_victory_scene = victory_scene
 
@@ -102,18 +75,19 @@ func start_combat(entity_id: String, victory_scene: String):
 	# Mostra i pulsanti di combattimento
 	show_combat_buttons()
 
-# Modifica l'energia dell'entità corrente (Chiamato da SpecialManager per infliggere danni)
+## Modifica la salute del nemico attuale.
+## Input: type_id (String) - Tipo di energia; amount (int) - Valore da aggiungere/sottrarre.
+## Output: Nessuno.
 func modify_current_entity_energy(type_id: String, amount: int):
 	# Per ora i nemici hanno solo "life", quindi applichiamo tutto alla salute
 	if type_id == "life":
 		current_entity_health += amount
 
-# =========================================================
-# LOGICA DI DIFESA
-# =========================================================
-
+## Calcola la probabilità di schivata del giocatore basata sulle energie fisiche.
+## La schivata è limitata a un massimo del 75%.
+## Input: Nessuno.
+## Output: int - Percentuale di schivata (0-75).
 func get_player_evasion() -> int:
-	# Calcola la % di schivata basata sulle energie "fisiche" attuali del giocatore.
 	var phys_sum = 0
 	var energy_types_def = game.story_data.get("energy_types", {})
 	
@@ -126,13 +100,10 @@ func get_player_evasion() -> int:
 	# Cap massimo al 75% per evitare invulnerabilità totale
 	return int(min(evasion_chance, 75))
 
-
-# =========================================================
-# CONFIGURAZIONE PULSANTI COMBATTIMENTO
-# =========================================================
-# Imposta i pulsanti disponibili nel turno del giocatore.
-# Questa funzione viene chiamata all'inizio di ogni turno del giocatore.
-
+## Configura e mostra i pulsanti principali per le azioni di combattimento.
+## Viene chiamata all'inizio di ogni turno del giocatore.
+## Input: Nessuno.
+## Output: Nessuno.
 func show_combat_buttons():
 	# Riabilita i pulsanti (nel caso fossero disabilitati da QTE o altro)
 	game.enable_choices()
@@ -174,12 +145,10 @@ func show_combat_buttons():
 		game._clear_signals(game.b3)
 		game.b3.pressed.connect(flee_combat, CONNECT_ONE_SHOT)
 
-
-# =========================================================
-# MENU ABILITÀ
-# =========================================================
-# Gestisce il sottomenu per le abilità speciali (consumano MP).
-
+## Apre il sottomenu delle abilità speciali (magie).
+## Popola dinamicamente i pulsanti in base alle magie caricate nello SpecialManager.
+## Input: Nessuno.
+## Output: Nessuno.
 func open_special_menu():
 	# Controllo di sicurezza: se il manager non è caricato, interrompi per evitare crash
 	if not game.special_manager:
@@ -217,10 +186,9 @@ func open_special_menu():
 	game._clear_signals(game.b3)
 	game.b3.pressed.connect(show_combat_buttons) # Ritorna al menu di combattimento principale
 
-# FASE 1: PREPARAZIONE LANCIO
-# ---------------------------
-# Verifica il mana e imposta l'interfaccia per la selezione del bersaglio.
-
+## Verifica i costi e prepara l'interfaccia per il lancio di una magia.
+## Input: spell_id (String) - ID dell'incantesimo da lanciare.
+## Output: Nessuno.
 func prepare_spell_cast(spell_id: String):
 	# Controllo Mana preventivo
 	if not game.special_manager.has_enough_mana(spell_id):
@@ -250,6 +218,9 @@ func prepare_spell_cast(spell_id: String):
 	enable_target_selection(spell_type)
 	target_selected.connect(_on_target_chosen, CONNECT_ONE_SHOT)
 
+## Annulla la fase di puntamento di una magia e torna al menu abilità.
+## Input: Nessuno.
+## Output: Nessuno.
 func cancel_spell_selection():
 	disable_target_selection()
 	# Disconnette il segnale se era attivo (per evitare doppie chiamate future)
@@ -257,10 +228,9 @@ func cancel_spell_selection():
 		target_selected.disconnect(_on_target_chosen)
 	open_special_menu()
 
-# FASE 2: SELEZIONE BERSAGLIO
-# ---------------------------
-# Callback chiamata quando il giocatore clicca su un'icona (Player o Nemico).
-
+## Callback invocata quando l'utente seleziona un bersaglio (Player o Nemico).
+## Input: target_type (String) - "player" o "enemy".
+## Output: Nessuno.
 func _on_target_chosen(target_type: String):
 	disable_target_selection()
 	
@@ -275,8 +245,10 @@ func _on_target_chosen(target_type: String):
 	if target_id != "":
 		await execute_spell(pending_spell_id, target_id)
 
+## Esegue l'effetto di una magia sul bersaglio selezionato e passa il turno.
+## Input: spell_id (String) - ID incantesimo; target_id (String) - ID del bersaglio.
+## Output: Nessuno.
 func execute_spell(spell_id: String, target_id: String):
-	
 	if OS.is_debug_build():
 		print(game.tr("debug_special_use") % [spell_id, target_id])
 		
@@ -316,14 +288,11 @@ func execute_spell(spell_id: String, target_id: String):
 #			game._clear_signals(game.b3)
 #			game.b3.pressed.connect(func(): use_item_turn(consumable_id), CONNECT_ONE_SHOT)
 
-# =========================================================
-# ANALISI DEL NEMICO
-# =========================================================
-# Permette al giocatore di scoprire informazioni sull'entità.
-# Utilizza l'EmpathyManager per determinare il comportamento.
-
+## Analizza il nemico per rivelare le sue statistiche e passa il turno.
+## Utilizza l'EmpathyManager per la logica di analisi.
+## Input: Nessuno.
+## Output: Nessuno.
 func analyze_turn():
-
 	# Delega la logica all'EmpathyManager
 	game.text.text = game.empathy_manager.analyze(current_entity_id)
 
@@ -334,14 +303,10 @@ func analyze_turn():
 	# Dopo l'analisi il nemico reagisce
 	entity_turn()
 
-
-# =========================================================
-# USO OGGETTO
-# =========================================================
-# Usa un oggetto consumabile durante il combattimento.
-
+## Utilizza un oggetto consumabile durante il proprio turno.
+## Input: item_id (String) - ID dell'oggetto da usare.
+## Output: Nessuno.
 func use_item_turn(item_id):
-
 	# La logica dell'oggetto è gestita dall'ItemManager
 	game.text.text = game.item_manager.use_item(item_id)
 
@@ -352,12 +317,10 @@ func use_item_turn(item_id):
 	# Il nemico reagisce
 	entity_turn()
 
-
-# =========================================================
-# SISTEMA RUNE
-# =========================================================
-# Gestisce l'integrazione con il minigioco delle rune.
-
+## Avvia la sequenza di casting tramite RuneManager.
+## Connette i segnali necessari per gestire l'esito della combo.
+## Input: Nessuno.
+## Output: Nessuno.
 func start_rune_combat():
 	# Verifica che il RuneManager esista nel Game
 	if "rune_manager" in game and game.rune_manager:
@@ -375,9 +338,10 @@ func start_rune_combat():
 		# Fallback: passa il turno se qualcosa va storto
 		entity_turn()
 
-# Callback: Il RuneManager ha calcolato la combo e chiede su chi lanciarla.
-# spell_data contiene {power, type, cost, name}
-func _on_rune_target_requested(spell_data):
+## Callback: Il RuneManager ha calcolato la combo e richiede un bersaglio.
+## Input: spell_data (Dictionary) - Dati dell'incantesimo aggregato {power, type, cost, name}.
+## Output: Nessuno.
+func _on_rune_target_requested(spell_data: Dictionary):
 	pending_rune_data = spell_data
 	
 	# Configura la UI per la selezione bersaglio
@@ -397,6 +361,9 @@ func _on_rune_target_requested(spell_data):
 	enable_target_selection(spell_data.get("type", "neutral"))
 	target_selected.connect(_on_rune_target_chosen, CONNECT_ONE_SHOT)
 
+## Annulla la selezione del bersaglio per le rune (comporta la perdita del turno).
+## Input: Nessuno.
+## Output: Nessuno.
 func cancel_rune_selection():
 	disable_target_selection()
 	if target_selected.is_connected(_on_rune_target_chosen):
@@ -404,7 +371,10 @@ func cancel_rune_selection():
 	# Se annulli dopo aver castato le rune, torni al menu principale ma hai perso l'occasione di lanciare.
 	show_combat_buttons()
 
-func _on_rune_target_chosen(target_type):
+## Callback invocata alla selezione del bersaglio per la combo runica.
+## Input: target_type (String) - ID del tipo di bersaglio ("player", "enemy", "back").
+## Output: Nessuno.
+func _on_rune_target_chosen(target_type: String):
 	disable_target_selection()
 	
 	var target_id = ""
@@ -417,10 +387,11 @@ func _on_rune_target_chosen(target_type):
 	if target_id != "":
 		_execute_rune_combo(target_id)
 
-# ESECUZIONE COMBO RUNICA
-# -----------------------
-# Applica gli effetti calcolati dal RuneManager al bersaglio scelto.
-# Gestisce manualmente Affinità, Debolezze e Immunità.
+## Applica gli effetti della combo runica al bersaglio.
+## Gestisce il consumo di mana e il calcolo dei moltiplicatori elementali.
+## Input: target_id (String) - ID del bersaglio ("player" o ID nemico).
+## Output: Nessuno.
+@warning_ignore("shadowed_variable")
 func _execute_rune_combo(target_id):
 	var data = pending_rune_data
 	var power = int(data.get("power", 0))
@@ -506,23 +477,25 @@ func _execute_rune_combo(target_id):
 	
 	entity_turn()
 
+## Callback invocata quando la sequenza di rune termina senza produrre incantesimi.
+## Input: _total_spells (int) - Numero di incantesimi generati (0 in questo caso).
+## Output: Nessuno.
 func _on_rune_sequence_finished(_total_spells):
-	# Viene chiamato solo se la combo fallisce (0 spells)
-	# Passa il turno al nemico (punizione per il fallimento)
 	entity_turn()
 
-# =========================================================
-# ATTACCO DEL GIOCATORE
-# =========================================================
-# Gestisce l'attacco fisico standard, potenziato dal QTE.
-
+## Avvia l'evento QTE per l'attacco fisico del giocatore.
+## Input: Nessuno.
+## Output: Nessuno.
 func initiate_attack_qte():
 	# Avvia l'evento QTE per l'attacco del giocatore.
 	# Il contesto "player_attack" dirà a Game.gd come gestire il risultato.
 	game.start_qte_event("qte_start_attack", "player_attack")
 
-# Viene chiamata da Game.gd al termine del QTE di attacco.
+## Calcola e applica il danno dell'attacco fisico dopo il QTE.
+## Input: qte_multiplier (float) - Il moltiplicatore ottenuto dal QTE.
+## Output: Nessuno.
 func resolve_player_attack(qte_multiplier: float):
+	if not game.item_manager: return
 	
 	# Calcolo del danno tramite ItemManager
 	# ItemManager controlla l'equipaggiamento e restituisce il danno base + bonus.
@@ -630,18 +603,10 @@ func flee_combat():
 		entity_turn()
 
 
-# =========================================================
-# TURNO DEL NEMICO
-# =========================================================
-# Dopo l'azione del giocatore il nemico attacca.
-# Include:
-# 1. Selezione casuale dell'attacco (se il nemico ne ha più di uno).
-# 2. Calcolo del danno (variabile casuale).
-# 3. Check Evasione del giocatore (basato su stats Life+Chakra).
-# 4. Applicazione danno e aggiornamento UI.
-
+## Gestisce il turno dell'IA nemica: calcolo danno, check evasione e applicazione effetti.
+## Input: Nessuno.
+## Output: Nessuno.
 func entity_turn():
-
 	var max_damage = 2 # Valore di fallback
 	var attack_type = ""
 	
@@ -679,7 +644,6 @@ func entity_turn():
 	var hp_before = game.health
 	game.health -= damage
 	print(game.tr("log_combat_enemy_attack") % [current_entity_id, attack_type, damage, hp_before, game.health])
-
 	game.update_stats()
 
 	if game.health <= 0:
@@ -698,6 +662,10 @@ func entity_turn():
 		# Torna il turno del giocatore
 		show_combat_buttons()
 
+## Abilita le aree cliccabili (Giocatore/Nemico) per la selezione del bersaglio.
+## Cambia il modulate delle box per riflettere se l'azione è benefica o ostile.
+## Input: action_type (String) - Il tipo elementale dell'azione.
+## Output: Nessuno.
 func enable_target_selection(action_type: String = ""):
 	# Rendi i contenitori della UI intercettatori di click per la selezione bersaglio
 	if game.player_box_container:
@@ -718,6 +686,9 @@ func enable_target_selection(action_type: String = ""):
 		if not game.enemy_stats_box.gui_input.is_connected(_on_enemy_target_input):
 			game.enemy_stats_box.gui_input.connect(_on_enemy_target_input)
 
+## Disabilita il puntamento UI e ripristina l'aspetto normale dei contenitori.
+## Input: Nessuno.
+## Output: Nessuno.
 func disable_target_selection():
 	if game.player_box_container:
 		game.player_box_container.modulate = Color.WHITE
@@ -735,14 +706,24 @@ func disable_target_selection():
 		if game.enemy_stats_box.gui_input.is_connected(_on_enemy_target_input):
 			game.enemy_stats_box.gui_input.disconnect(_on_enemy_target_input)
 
+## Gestisce l'input del mouse sul contenitore del giocatore.
+## Input: event (InputEvent) - L'evento di input catturato.
+## Output: Nessuno.
 func _on_player_target_input(event: InputEvent):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		target_selected.emit("player")
 
+## Gestisce l'input del mouse sul contenitore del nemico.
+## Input: event (InputEvent) - L'evento di input catturato.
+## Output: Nessuno.
 func _on_enemy_target_input(event: InputEvent):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		target_selected.emit("enemy")
 
+## Calcola il colore di feedback (Rosso/Verde) in base all'affinità del bersaglio con l'azione.
+## Input: target_type (String) - "player" o "enemy"; action_type (String) - Tipo di energia.
+## Output: Color - Il colore da applicare al modulate.
+@warning_ignore("shadowed_variable")
 func _get_color_for_effect(target_type: String, action_type: String) -> Color:
 	var affinities = []
 	if target_type == "player":
@@ -756,10 +737,9 @@ func _get_color_for_effect(target_type: String, action_type: String) -> Color:
 		return Color(0.8, 1.2, 0.8) # Verde (Cura/Affinità)
 	return Color(1.2, 0.8, 0.8) # Rosso (Danno/Ostilità)
 
-# =========================================================
-# CONTROLLO VITTORIA
-# =========================================================
-# Funzione centralizzata per gestire la vittoria e le ricompense
+## Verifica se il nemico è stato sconfitto e assegna le ricompense di crescita.
+## Input: Nessuno.
+## Output: bool - true se il nemico è morto e lo scontro è terminato.
 func _check_victory() -> bool:
 	if current_entity_health <= 0:
 		current_entity_health = 0

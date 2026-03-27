@@ -1,15 +1,15 @@
 # =========================================================
 # DEATH MANAGER
 # =========================================================
-# Gestisce la telemetria delle morti nel gioco (Analytics).
+# Gestisce la telemetria delle morti (Analytics) e gli effetti visivi correlati.
 #
 # Funzionalità principali:
-# - Registra quando il giocatore muore.
-# - Registra quando un nemico/entità muore.
-# - Invia questi dati a un server remoto (API) tramite HTTP POST.
+# - Registrazione del decesso del giocatore e delle entità.
+# - Invio dei dati di telemetria a un server remoto tramite HTTP POST.
+# - Gestione dell'overlay di Game Over e degli shader per il feedback visivo.
 #
-# SCOPO NARRATIVO:
-# Dare l'impressione che le entità abbiano una coscienza persistente.
+# Scopo narrativo: Dare l'impressione che le entità abbiano una coscienza persistente.
+#
 # TODO: Implementare in futuro creature che "ricordano" di essere state uccise in partite precedenti.
 
 class_name DeathManager
@@ -32,12 +32,11 @@ var api_url = "https://webhook.site/adf018ca-d0e3-4068-82ca-9259f5b9336a"
 
 @onready var http_request = HTTPRequest.new()
 
+## Configurazione iniziale del nodo e connessione dei segnali di rete.
+## Input: Nessuno.
+## Output: Nessuno.
 func _ready():
-	# Configurazione iniziale
-	# Aggiunge il nodo HTTPRequest alla scena per poter effettuare chiamate di rete.
-	# Senza add_child(), il nodo non processerebbe la richiesta.
-	
-	# Fallback di sicurezza: se la traduzione manca (la chiave non ha %s), usiamo la concatenazione
+	# Fallback di sicurezza per la stringa di log iniziale
 	var msg = tr("death_manager_init")
 	if "%s" in msg:
 		print(msg % api_url)
@@ -50,6 +49,9 @@ func _ready():
 # REGISTRAZIONE EVENTI
 # =========================================================
 
+## Registra la morte del giocatore e invia il payload JSON alla telemetria.
+## Input: Nessuno.
+## Output: Nessuno.
 func record_player_death():
 	# Crea il payload JSON per la morte del giocatore
 	var data = {
@@ -59,6 +61,9 @@ func record_player_death():
 	_send_request(data)
 	print(tr("death_manager_log_player"))
 
+## Inizializza i materiali shader e l'overlay UI per la schermata di morte.
+## Input: Nessuno.
+## Output: Nessuno.
 func init_ui_effects():
 	# 1. Shader Grayscale per l'icona
 	var shader = Shader.new()
@@ -98,6 +103,9 @@ func init_ui_effects():
 	death_overlay.add_child(label)
 	game.add_child(death_overlay)
 
+## Gestisce la transizione allo stato di Game Over, attivando UI e logica di ripristino.
+## Input: Nessuno.
+## Output: Nessuno.
 func handle_game_over():
 	record_player_death()
 	game.text.text = tr("game_over_text")
@@ -121,11 +129,17 @@ func handle_game_over():
 		var tween = game.create_tween()
 		tween.tween_property(death_overlay, "modulate:a", 1.0, 2.0)
 
+## Rimuove i filtri grafici di morte e nasconde l'overlay UI.
+## Input: Nessuno.
+## Output: Nessuno.
 func clear_death_effects():
 	if game.player_icon: game.player_icon.material = null
 	if game.player_stats: game.player_stats.material = null
 	if death_overlay: death_overlay.hide()
 
+## Registra la morte di un nemico/entità nel sistema di telemetria.
+## Input: entity_id (String) - L'identificatore dell'entità sconfitta.
+## Output: Nessuno.
 func record_entity_death(entity_id: String):
 	# Crea il payload JSON per la morte di un nemico
 	if entity_id.is_empty():
@@ -142,6 +156,9 @@ func record_entity_death(entity_id: String):
 # GESTIONE HTTP
 # =========================================================
 
+## Prepara e invia una richiesta POST asincrona all'API.
+## Input: data (Dictionary) - Il dizionario da convertire in JSON.
+## Output: Nessuno (gestito via segnale request_completed).
 func _send_request(data: Dictionary):
 	# Prepara la richiesta POST
 	var headers: PackedStringArray = ["Content-Type: application/json"]
@@ -152,7 +169,9 @@ func _send_request(data: Dictionary):
 	if error != OK:
 		push_error(tr("death_manager_http_error"))
 
-# Callback chiamata quando il server risponde (o la richiesta va in timeout)
+## Callback invocata al completamento della richiesta HTTP.
+## Input: Parametri standard di HTTPRequest (_result, response_code, _headers, body).
+## Output: Nessuno (stampa lo stato dell'operazione).
 func _on_request_completed(_result, response_code, _headers, body):
 	# Gestione della risposta
 	# 200 = OK, 201 = Created (successo standard per POST)

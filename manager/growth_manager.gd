@@ -8,37 +8,38 @@
 # - Gestisce un pool di "Energia disponibile" da spendere.
 # - Permette di aumentare permanentemente le statistiche massime (HP, MP, ecc.).
 #
-# Questo manager viene attivato da Game.gd dopo una vittoria in combattimento
-# (vedi `_check_victory` in CombatManager).
+# Scopo narrativo: Rappresenta l'evoluzione del potere del giocatore 
+# attraverso l'assorbimento dell'essenza dei nemici.
 
 class_name GrowthManager
 extends Node
 
-# Riferimento al gioco principale.
-# Iniettato da Game.gd in _ready().
-var game
-
-# Segnale emesso alla chiusura del menu per informare il gioco di riattivare l'HUD
+# --- Segnali ---
+# Emesso alla chiusura del menu per informare il gioco di riattivare l'HUD.
 signal growth_finished
 
-# Riferimenti UI gestiti internamente
+# --- Riferimenti Esterni ---
+# Riferimento al gioco principale (Game.gd). Iniettato in _ready().
+var game
+
+# --- Riferimenti UI e Cache ---
 var growth_overlay: Control = null
-# Copie locali dei dati per evitare di interrogare game.gd continuamente durante la modifica
 var _current_story_data: Dictionary = {}
-# Riferimenti ai dizionari originali del player per applicare le modifiche finali
 var _player_energy_ref: Dictionary = {}
 var _player_max_energy_ref: Dictionary = {}
 
-# Energia accumulata pronta per essere distribuita
+# --- Stato della Crescita ---
+# Energia accumulata pronta per essere distribuita.
 var available_energy: int = 0
-
-# Variabili per la gestione temporanea dell'assegnazione punti (UI Overlay)
+# Valore iniziale dell'energia a inizio sessione (per permettere il reset).
 var initial_available_energy: int = 0
-var temp_changes: Dictionary = {} # Mappa stat_id -> punti aggiunti
+# Mappa temporanea delle modifiche durante la sessione UI (stat_id -> punti aggiunti).
+var temp_changes: Dictionary = {} 
 
-
-# Calcola quanta energia rilascia un nemico sconfitto.
-# La ricompensa è basata sulla somma delle statistiche del nemico (es. Vita + Magia).
+## Calcola quanta energia rilascia un nemico sconfitto.
+## La ricompensa è basata sulla somma delle statistiche del nemico (es. Vita + Magia).
+## Input: entity_id (String) - L'identificatore dell'entità sconfitta.
+## Output: int - L'ammontare di energia calcolata (33% della forza totale).
 func calculate_reward(entity_id: String) -> int:
 	var entity = game.entity_data.get(entity_id)
 	
@@ -66,13 +67,18 @@ func calculate_reward(entity_id: String) -> int:
 	var final_reward = ceili(reward_base * 0.33)
 	return int(final_reward)
 
-# Aggiunge energia al pool del giocatore
+## Aggiunge energia al pool del giocatore.
+## Input: amount (int) - Quantità di energia da aggiungere.
+## Output: Nessuno.
 func add_energy(amount: int):
 	available_energy += amount
 
-# --- Nuova Logica per UI Separata ---
-
-# Inizializza la sessione di crescita
+## Inizializza la sessione di crescita e apre il menu UI.
+## Input: 
+## - story_data (Dictionary): Dati della storia per le definizioni stats.
+## - player_energy (Dictionary): Riferimento alle energie attuali.
+## - player_max_energy (Dictionary): Riferimento ai massimali.
+## Output: Nessuno.
 func open_growth_menu(story_data: Dictionary, player_energy: Dictionary, player_max_energy: Dictionary):
 	_current_story_data = story_data
 	_player_energy_ref = player_energy
@@ -83,7 +89,9 @@ func open_growth_menu(story_data: Dictionary, player_energy: Dictionary, player_
 	# Costruisce l'interfaccia da zero
 	_create_growth_overlay()
 
-# Crea programmaticamente l'overlay del menu di crescita
+## Crea programmaticamente l'overlay del menu di crescita.
+## Input: Nessuno.
+## Output: Nessuno.
 func _create_growth_overlay():
 	if growth_overlay:
 		growth_overlay.queue_free()
@@ -203,6 +211,9 @@ func _create_growth_overlay():
 	game.add_child(growth_overlay)
 	_refresh_growth_ui() # Primo aggiornamento dei valori
 
+## Aggiorna i testi e i valori numerici all'interno dell'overlay UI.
+## Input: Nessuno.
+## Output: Nessuno.
 func _refresh_growth_ui():
 	if not growth_overlay: return
 	
@@ -221,12 +232,16 @@ func _refresh_growth_ui():
 				var added_val = temp_changes.get(stat_id, 0)
 				lbl_val.text = str(base_val + added_val)
 
-# Inizializza i dati per una nuova sessione di distribuzione punti
+## Inizializza i dati per una nuova sessione di distribuzione punti.
+## Input: Nessuno.
+## Output: Nessuno.
 func start_growth_session():
 	initial_available_energy = available_energy
 	temp_changes.clear()
 
-# Tenta di aggiungere un punto a una statistica (temporaneo)
+## Tenta di aggiungere un punto a una statistica (modifica temporanea).
+## Input: stat_type (String) - L'ID della statistica da incrementare.
+## Output: bool - true se l'operazione ha avuto successo (energia disponibile > 0).
 func try_increase_stat(stat_type: String) -> bool:
 	if available_energy > 0:
 		available_energy -= 1
@@ -234,7 +249,9 @@ func try_increase_stat(stat_type: String) -> bool:
 		return true
 	return false
 
-# Tenta di rimuovere un punto assegnato (temporaneo)
+## Tenta di rimuovere un punto assegnato durante la sessione attuale.
+## Input: stat_type (String) - L'ID della statistica da decrementare.
+## Output: bool - true se c'erano punti temporanei da rimuovere.
 func try_decrease_stat(stat_type: String) -> bool:
 	if temp_changes.get(stat_type, 0) > 0:
 		temp_changes[stat_type] -= 1
@@ -242,12 +259,16 @@ func try_decrease_stat(stat_type: String) -> bool:
 		return true
 	return false
 
-# Resetta le modifiche attuali
+## Annulla tutte le modifiche fatte nella sessione UI corrente.
+## Input: Nessuno.
+## Output: Nessuno.
 func reset_changes():
 	available_energy = initial_available_energy
 	temp_changes.clear()
 
-# Conferma le modifiche e applicale al gioco
+## Applica permanentemente le modifiche al giocatore e chiude la sessione.
+## Input: Nessuno.
+## Output: Nessuno.
 func confirm_changes():
 	if temp_changes.is_empty():
 		# Nessuna modifica fatta, esce solo
