@@ -8,26 +8,30 @@
 # - Gestione delle combo: più incantesimi lanciati in sequenza rapida.
 # - Calcolo avanzato del danno: somma potenze dello stesso tipo e annulla opposti.
 # - Integrazione con l'interfaccia utente dedicata (sovrapposta).
+#
+# Scopo narrativo: Rappresenta la manipolazione delle energie 
+# primordiali attraverso il linguaggio dei segni antichi.
 
 extends Control
 
-# NOTA IMPORTANTE:
-# NON inserire stringhe di testo hardcoded (es. "Hai lanciato...") direttamente nel codice.
-# Usa sempre tr("chiave_json") e definisci la chiave corrispondente nel file data/it.json.
-
-# Segnali verso il sistema di gioco/combattimento
+# --- Segnali ---
+## Emesso per richiedere la selezione di un bersaglio per l'incantesimo generato.
 signal request_target_selection(spell_data)
+## Emesso al termine della sessione di rune se non sono stati generati incantesimi.
 signal combo_finished(total_spells)
 
-# Configurazione Gameplay
+# --- Riferimenti Esterni ---
+## Riferimento al gioco principale (Game.gd). Iniettato in Game._ready().
+var game
+
+# --- Configurazione Gameplay ---
 const MAX_COMBO_CHAIN = 7
 const PERFECT_TIME_THRESHOLD_MS = 2500 # Sotto i 2.5s è "Perfetto" -> Combo
 const MAX_TIME_FOR_MULTIPLIER_MS = 5000 # Sopra i 5s il moltiplicatore è 1.0x
-# const COST_SCALING_FACTOR = 1.5 # Il costo aumenta del 50% per ogni spell nella catena
-# Il costo diminuisce del 25% per ogni spell nella catena (incentiva le combo lunghe)
-const COST_SCALING_FACTOR = 0.75
+## Fattore di riduzione del costo mana per ogni incantesimo in combo (25% di sconto).
+const COST_SCALING_FACTOR = 0.75 
 
-# Variabili di Stato
+# --- Stato del Manager ---
 var rune_data = {}
 var damage_types_data = {}
 var current_sequence = []
@@ -37,35 +41,36 @@ var current_combo_index = 0
 var is_active = false
 var accumulated_spells = []
 
-# Riferimenti UI (Assicurati che i nomi dei nodi nella scena corrispondano)
+# --- Riferimenti UI ---
 @onready var feedback_label = $Panel/CenterContainer/VBoxContainer/FeedbackLabel
 @onready var rune_display_label = $Panel/CenterContainer/VBoxContainer/RuneDisplayLabel
 @onready var grid_container = $Panel/CenterContainer/VBoxContainer/RuneGrid
 
-
+## Configurazione iniziale del layout e caricamento dati.
+## Input: Nessuno.
+## Output: Nessuno.
 func _ready():
-	# Caricamento dati e configurazione iniziale UI
+	if self is Control:
+		top_level = true
+		set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+
 	_load_rune_data()
 	hide()
-	# Configurazione font:
-	# 1. FeedbackLabel: Messaggi di gioco (dimensione normale per leggere il testo)
+	
 	feedback_label.add_theme_font_size_override("font_size", 24)
-	# Abilita il ritorno a capo intelligente e imposta un'altezza minima per nomi lunghi
 	feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	feedback_label.custom_minimum_size.y = 80
-	feedback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER # Centra anche il testo descrittivo
+	feedback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	# 2. RuneDisplayLabel: Simboli delle rune (dimensione grande per vedere le icone)
 	rune_display_label.add_theme_font_size_override("font_size", 50)
-	# Centra le rune visualizzate orizzontalmente
 	rune_display_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Riserva spazio verticale fisso per evitare spostamenti quando si scrive la prima runa
 	rune_display_label.custom_minimum_size.y = 80
 	rune_display_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
+## Carica le definizioni delle rune e dei tipi di danno dai file JSON.
+## Input: Nessuno.
+## Output: Nessuno (popola variabili locali).
 func _load_rune_data():
-	# ATTENZIONE: I percorsi dei file JSON sono fissi in res://data/.
-	# NON MODIFICARE questi percorsi a meno di una specifica richiesta.
 	var runes_file = FileAccess.open("res://data/runes.json", FileAccess.READ)
 	if runes_file:
 		var json = JSON.new()
@@ -86,21 +91,12 @@ func _load_rune_data():
 	else:
 		push_error(tr("error_definitions_file_not_found_rune"))
 
-# Metodo pubblico per avviare il manager
+## Inizializza e mostra l'interfaccia per il lancio delle rune.
+## Input: Nessuno.
+## Output: Nessuno.
 func start_rune_casting():
-	# =========================================================
-	# GESTIONE LAYOUT
-	# =========================================================
-	
-	# Soluzione pulita per il posizionamento:
-	# 1. Rendi il pannello "top_level" per sganciarlo dal layout del genitore.
-	#    Questo fa sì che si posizioni rispetto all'intera finestra di gioco.
 	top_level = true
-	# 2. Applica il preset per centrarlo (ancore e offset) ogni volta che viene aperto.
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-
-	# 3. Assicuriamoci che anche i contenitori interni si espandano per riempire lo schermo.
-	#    Se il Panel o il CenterContainer rimangono piccoli in alto a sinistra, la griglia non sarà centrata.
 	$Panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	$Panel/CenterContainer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -110,32 +106,26 @@ func start_rune_casting():
 	accumulated_spells.clear()
 	_prepare_round(tr("rune_prompt_start"))
 
-# Prepara un nuovo round del minigioco (resetta input e mescola le rune)
-# prompt_text: Messaggio da mostrare (es. "Seleziona 3 Rune!")
+## Prepara un nuovo round di input (resetta sequenza e rimescola pulsanti).
+## Input: prompt_text (String) - Messaggio da visualizzare nel feedback.
+## Output: Nessuno.
 func _prepare_round(prompt_text: String) -> void:
 	current_sequence.clear()
 	current_icons.clear()
-	start_time_ms = 0 # Il timer partirà al primo click
+	start_time_ms = 0
 	feedback_label.text = prompt_text
-	rune_display_label.text = "" # Pulisce la visualizzazione delle rune
+	rune_display_label.text = ""
 	
-	# Nascondiamo temporaneamente la griglia per evitare che il layout si "restringa"
-	# visibilmente mentre la svuotiamo e la riempiamo di nuovo.
 	grid_container.hide()
 	
-	# Pulisci griglia precedente
 	for child in grid_container.get_children():
 		child.queue_free()
 	
-	# queue_free() elimina i nodi alla fine del frame. Attendiamo il frame successivo
-	# per essere sicuri che la griglia sia vuota prima di aggiungere nuovi elementi.
 	await get_tree().process_frame
 	
-	# Mischia le rune (Logica: ordine diverso ad ogni apertura/round)
 	var deck = rune_data.get("runes", []).duplicate()
 	deck.shuffle()
 	
-	# Genera pulsanti
 	for rune in deck:
 		var btn := Button.new()
 		btn.text = rune.get("icon", "?")
@@ -268,10 +258,7 @@ func _end_session():
 			print("\n" + tr("debug_rune_calc_start"))
 			print(tr("debug_rune_raw_power") % str(power_by_type))
 
-		# 2. Gestisci gli opposti: si annullano a vicenda
-		# Es. Se ho Fuoco (10) e Ghiaccio (6), il risultato è Fuoco (4).
-		# I tipi opposti sono definiti in story.json -> damage_types.
-		var processed_types = [] # Per non processare una coppia due volte
+		var processed_types = [] 
 		for type1 in power_by_type.keys():
 			if type1 in processed_types: continue
 
@@ -295,8 +282,6 @@ func _end_session():
 				processed_types.append(type1)
 				processed_types.append(opposite_type)
 
-		# 3. Calcola potenza totale e determina il tipo dominante
-		# Il tipo con la potenza residua maggiore determina l'elemento finale dell'attacco.
 		var total_power = 0.0
 		var main_type = "neutral"
 		var max_power = 0.0
@@ -317,10 +302,8 @@ func _end_session():
 			print(tr("debug_rune_result") % [main_type, total_power])
 			print(tr("debug_rune_separator"))
 
-		# 4. Crea l'incantesimo aggregato
 		var aggregated_spell = {
-			"id": "rune_combo", # ID generico per il CombatManager
-			# Nome mostrato nel log (es. "Combo Runica")
+			"id": "rune_combo",
 			"name": "spell_combo_runic",
 			"power": total_power,
 			"cost": total_cost,
@@ -329,12 +312,53 @@ func _end_session():
 
 		if OS.is_debug_build():
 			print(tr("debug_rune_request_target") % str(aggregated_spell))
-		# Invia i dati al Game/CombatManager per la selezione del bersaglio e l'applicazione
 		request_target_selection.emit(aggregated_spell)
 	else:
-		# Emettiamo combo_finished solo se non ci sono spell da lanciare (fallimento)
-		# Altrimenti lasciamo il controllo alla selezione bersaglio
 		combo_finished.emit(current_combo_index)
+
+## Risolve l'effetto di un incantesimo quando lanciato fuori dal combattimento.
+## Gestisce la meccanica di assorbimento (Affinità = Cura) e il danno ambientale.
+## Input: spell_data (Dictionary) - Dati della magia (id, power, cost, type).
+func resolve_world_spell(spell_data: Dictionary):
+	if not game: return
+
+	var spell_id = spell_data.get("id", "rune_spell")
+	var power = int(spell_data.get("power", 0))
+	var cost = int(spell_data.get("cost", 0))
+	var type = spell_data.get("type", "neutral")
+	
+	# Consumo risorse (Mana/Chakra)
+	game.modify_player_energy("magic", -cost)
+
+	var msg = ""
+	
+	# --- Meccanica di Assorbimento Energetico ---
+	# 1. Non esiste una "magia di cura" pura.
+	# 2. L'affinità elementale inverte il danno in rigenerazione vitale.
+	# 3. In assenza di affinità, l'energia colpisce l'eventuale nemico.
+	
+	var player_affinities = game.story_data.get("player", {}).get("affinity", [])
+
+	if type in player_affinities:
+		# Il giocatore assorbe l'elemento: trasforma la potenza in salute
+		game.modify_player_energy("life", power)
+		msg = tr("spell_cast_heal") % [tr(spell_id), power]
+	else:
+		# L'energia viene proiettata all'esterno (Danno)
+		if game.combat_manager and game.combat_manager.current_entity_health > 0:
+			game.combat_manager.current_entity_health -= power
+			msg = tr("spell_cast_damage") % [tr(spell_id), power]
+			
+			# Check vittoria fuori dal CombatManager (es. attacco preventivo)
+			if game.combat_manager.current_entity_health <= 0:
+				msg += " " + tr("combat_victory")
+		else:
+			msg = tr("spell_cast_no_enemy")
+
+	# Aggiornamento log e UI
+	if game.text:
+		game.text.text += "\n" + msg
+	game.update_stats()
 
 # Debug veloce
 func _input(event):

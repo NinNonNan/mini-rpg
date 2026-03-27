@@ -132,7 +132,7 @@ func _ready():
 
 	# Iniezione Game nei manager
 	# Fornisce ai manager un riferimento a questo script principale per callback e accesso ai dati
-	for mgr in [qte, combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager]:
+	for mgr in [qte, combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager, rune_manager]:
 		if mgr:
 			mgr.game = self
 	
@@ -144,11 +144,6 @@ func _ready():
 	if rune_manager:
 		rune_manager.request_target_selection.connect(_on_rune_data_received)
 		rune_manager.combo_finished.connect(_on_rune_combo_finished)
-		
-		# Fix layout: Forza il posizionamento al centro dello schermo
-		if rune_manager is Control:
-			rune_manager.top_level = true
-			rune_manager.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 
 	# Connessione DialogueManager
 	if dialogue_manager:
@@ -484,57 +479,11 @@ func _on_dialogue_choices_requested(choices):
 
 # --- Gestione Sistema Rune ---
 func _on_rune_data_received(spell_data: Dictionary):
-	var spell_id = spell_data.get("id", "rune_spell")
-	var power = int(spell_data.get("power", 0))
-	var cost = int(spell_data.get("cost", 0))
-	var type = spell_data.get("type", "neutral")
-	_on_spell_cast_success(spell_id, power, cost, type)
-
-func _on_spell_cast_success(spell_id, power, cost, type):
-	# FIX: Se siamo in combattimento, il CombatManager gestisce l'effetto della runa (danni, resistenze, ecc.)
-	# Interrompiamo qui per evitare che Game.gd applichi danni "puri" ignorando le immunit├á del nemico.
 	if was_in_combat:
 		return
 	
-	# Consuma Mana (Solo se NON siamo in combattimento, altrimenti ci pensa il CombatManager)
-	modify_player_energy("magic", -int(cost))
-
-	var msg = ""
-	# -------------------------------------------------------------------------
-	# !!! MECCANICA FONDAMENTALE - NON MODIFICARE !!!
-	#
-	# REGOLE:
-	# 1. La cura non esiste come meccanica separata.
-	# 2. Se il giocatore ha affinit├á con un tipo di energia, la assorbe e si cura.
-	# 3. Se il giocatore NON ha affinit├á, l'energia viene proiettata come danno.
-	#
-	# QUESTA LOGICA NON DEVE ESSERE ALTERATA IN NESSUN CASO.
-	# -------------------------------------------------------------------------
-	var player_affinities = story_data.get("player", {}).get("affinity", [])
-
-	if type in player_affinities:
-		# Affinit├á = Cura (Assorbe l'energia)
-		modify_player_energy("life", int(power))
-		msg = tr("spell_cast_heal") % [tr(spell_id), int(power)]
-	else:
-		# Danno al nemico (se in combattimento o se c'├¿ un'entit├á attiva)
-		if combat_manager and combat_manager.current_entity_health > 0:
-			combat_manager.current_entity_health -= int(power)
-			msg = tr("spell_cast_damage") % [tr(spell_id), int(power)]
-			
-			# Controllo vittoria immediata
-			if combat_manager.current_entity_health <= 0:
-				msg += " " + tr("combat_victory")
-				# Nota: Il CombatManager gestir├á la transizione al prossimo click o update
-		else:
-			msg = tr("spell_cast_no_enemy")
-	# -------------------------------------------------------------------------
-	# FINE BLOCCO MECCANICA FONDAMENTALE
-	# -------------------------------------------------------------------------
-
-	# Aggiorna il testo e le statistiche
-	text.text += "\n" + msg
-	update_stats()
+	if rune_manager:
+		rune_manager.resolve_world_spell(spell_data)
 
 func _on_rune_combo_finished(total_spells):
 	if total_spells > 0:
