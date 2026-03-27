@@ -40,10 +40,6 @@ extends Control
 var player_energy: Dictionary = {}
 var player_max_energy: Dictionary = {}
 
-# --- Inventario ed Equipaggiamento ---
-var equipment: Dictionary = {} # Mappa slot_id -> item_id
-var equipment_slots: Array[String] = ["Mano Destra", "Mano Sinistra", "Corpo", "Testa", "Accessorio"]
-
 # --- Accessori di Propriet├á (Getter/Setter) ---
 # --- Compatibilit├á (Bridge) ---
 # Queste propriet├á permettono agli altri script di usare game.health 
@@ -70,19 +66,15 @@ var max_mood: int:
 	set(value): player_max_energy["mood"] = value
 
 # --- Variabili di Flusso ---
-var inventory: Array = []
 var current_entity_pronoun: String = ""
 var current_victory_scene: String = ""
 var current_entity_id: String = ""
 var was_in_combat: bool = false
 var use_visual_health: bool = true
-var grayscale_material: ShaderMaterial
-var death_overlay: ColorRect
 
 # --- Database ---
 var story: Dictionary = {}
 var story_data: Dictionary = {}
-var item_data: Dictionary = {}
 var entity_data: Dictionary = {}
 var damage_types_data: Dictionary = {}
 var current_scene: String = "start"
@@ -143,6 +135,10 @@ func _ready():
 	for mgr in [qte, combat_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager]:
 		if mgr:
 			mgr.game = self
+	
+	# Debug check per item_manager
+	if not item_manager:
+		push_error("ERRORE CRITICO: ItemManager non è stato inizializzato correttamente in Game.gd!")
 
 	# Connessione RuneManager
 	if rune_manager:
@@ -163,13 +159,10 @@ func _ready():
 		dialogue_manager.dialogue_finished.connect(show_scene)
 		dialogue_manager.dialogue_failed.connect(_start_prepared_combat)
 
-	# Inizializza effetti grafici per la morte
-	# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
-		# Inizializza effetti grafici per la morte
-		# !!! NON RIMUOVERE !!! Serve per visualizzare la morte (grigio + overlay)
-	
-	# Setup effetti grafici morte
-	_init_death_effects()
+	# Inizializzazione DeathManager
+	if death_manager:
+		death_manager.init_ui_effects()
+		death_manager.retry_requested.connect(_restart_game)
 	
 	# Tentativo di caricamento partita
 	if save_manager:
@@ -201,11 +194,8 @@ func _load_story():
 	else:
 		push_error(tr("error_definitions_load"))
 
-	# Caricamento items separato per modularit├á
-	# ATTENZIONE: Percorso fisso in res://data/. NON MODIFICARE.
-	var items_json = StoryLoader.load_json_file("res://data/items.json")
-	if items_json != null:
-		item_data = items_json
+	if item_manager:
+		item_manager.load_items()
 	
 	# Carica dati entit├á (player e nemici) da file separato
 	var entities_json = StoryLoader.load_json_file("res://data/entities.json")
@@ -260,27 +250,6 @@ func get_player_energy_value(type_id: String) -> int:
 	# Restituisce il valore corrente di una statistica (es. "life", "magic")
 	return player_energy.get(type_id, 0)
 
-func get_player_evasion() -> int:
-	# Calcola la % di schivata basata sulle energie "fisiche" attuali.
-	# -------------------------------------------------------------------------
-	# MECCANICA DI SCHIVATA:
-	# La probabilit├á di evitare un attacco dipende dalla somma delle energie
-	# che hanno la propriet├á "bonus": "evasion" definita in definitions.json.
-	# (Es. Life e Chakra).
-	#
-	# Formula: (Somma Energie Evasione Attuali) * 2%
-	# -------------------------------------------------------------------------
-	var phys_sum = 0
-	var energy_types_def = story_data.get("energy_types", {})
-	
-	for type_id in player_energy.keys():
-		var def = energy_types_def.get(type_id, {})
-		if def.get("bonus") == "evasion":
-			phys_sum += get_player_energy_value(type_id)
-
-	var evasion_chance = phys_sum * 2.0
-	return int(min(evasion_chance, 75)) # Cap massimo al 75%
-
 func modify_player_energy(type_id: String, amount: int):
 	# Modifica una statistica del giocatore e gestisce i limiti (min/max).
 	if not player_energy.has(type_id):
@@ -295,31 +264,12 @@ func modify_player_energy(type_id: String, amount: int):
 		# Se scende a 0 o meno, attiva il Game Over.
 		player_energy[type_id] = int(min(new_value, max_value))
 		if player_energy.get("life", 0) <= 0:
-			game_over()
+			if death_manager: death_manager.handle_game_over()
 	else:
 		# Le altre statistiche sono bloccate tra 0 e il loro massimo.
 		player_energy[type_id] = clampi(new_value, 0, max_value)
 
 	update_stats()
-
-func equip_item(item_id: String, slot: String):
-	# Se lo slot ├¿ occupato, rimuovi prima l'oggetto attuale
-	if slot in equipment:
-		unequip_item(slot)
-	
-	# Rimuovi dall'inventario e aggiungi all'equipaggiamento
-	if item_id in inventory:
-		inventory.erase(item_id) # Rimuove la prima occorrenza trovata
-		equipment[slot] = item_id
-		update_stats()
-
-func unequip_item(slot: String):
-	# Rimuove un oggetto dallo slot specificato e lo rimette nell'inventario.
-	if slot in equipment:
-		var item_id = equipment[slot]
-		equipment.erase(slot)
-		inventory.append(item_id)
-		update_stats()
 
 func get_energy_string(type_id: String, amount: int, max_amount: int = -1) -> String:
 	# Formatta una stringa per visualizzare una statistica (Icona + Valore).
@@ -360,10 +310,9 @@ func enable_choices():
 func update_stats():
 	# Aggiorna tutte le etichette dell'interfaccia utente (UI) con i valori correnti.
 	var inventory_names = []
-	for item_id in inventory:
-		var icon = item_manager.get_item_icon(item_id)
-		var item_name = item_manager.get_item_name(item_id)
-		inventory_names.append(icon if icon != "" else item_name)
+	if item_manager:
+		for item_id in item_manager.inventory:
+			inventory_names.append(item_manager.get_display_name(item_id))
 	var inv_str = tr("inventory_empty")
 	if inventory_names.size() > 0:
 		inv_str = ", ".join(inventory_names)
@@ -431,7 +380,7 @@ func show_scene(scene_name):
 	# Rileva la sconfitta di un'entit├á in combattimento.
 	# Se stavamo combattendo e ora passiamo alla scena di vittoria, registra la morte.
 	if was_in_combat and current_entity_id != "" and scene_name == current_victory_scene:
-		notify_entity_death(current_entity_id)
+		if death_manager: death_manager.record_entity_death(current_entity_id)
 
 	if scene_name != current_scene:
 		current_entity_id = ""
@@ -473,13 +422,9 @@ func handle_choice(choice):
 		match choice["action"]:
 			"pickup":
 				# Raccoglie un oggetto
-				var item = choice.get("item_id", "")
-				if not item in inventory:
-					inventory.append(item)
-					var icon = item_manager.get_item_icon(item)
-					var item_name = item_manager.get_item_name(item)
-					var display_name = ("%s " % icon if icon and icon != "" else "") + item_name
-					text.text = tr("item_picked_up") % [display_name]
+				var item_id = choice.get("item_id", "")
+				if item_manager and item_manager.add_item(item_id):
+					text.text = tr("item_picked_up") % [item_manager.get_display_name(item_id)]
 					update_stats()
 			"qte":
 				# Avvia un Quick Time Event
@@ -595,111 +540,22 @@ func _on_rune_combo_finished(total_spells):
 	if total_spells > 0:
 		text.text += tr("rune_combo_end_msg") % total_spells
 
-func _init_death_effects():
-	# 1. Shader Grayscale per l'icona
-	var shader = Shader.new()
-	shader.code = """
-		shader_type canvas_item;
-		void fragment() {
-			vec4 tex_color = texture(TEXTURE, UV);
-			float gray = dot(tex_color.rgb, vec3(0.299, 0.587, 0.114));
-			COLOR = vec4(vec3(gray), tex_color.a);
-		}
-	"""
-	grayscale_material = ShaderMaterial.new()
-	grayscale_material.shader = shader
-
-	var label = Label.new()
-	# 2. Overlay semitrasparente per il box giocatore
-	death_overlay = ColorRect.new()
-	death_overlay.color = Color(0, 0, 0, 0.85) # Sfondo scuro
-	death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT) # Copre tutto lo schermo
-	
-	# MODIFICA: Imposto il filtro mouse su STOP per intercettare i click sulla schermata nera.
-	death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	# Connetto l'evento di input: se viene rilevato un click del mouse, riavvia il gioco.
-	death_overlay.gui_input.connect(func(event):
-		if event is InputEventMouseButton and event.pressed:
-			_restart_game()
-	)
-	
-	death_overlay.hide()
-	
-	label.name = "DeathLabel"
-	# Usa PRESET_FULL_RECT per occupare tutto lo schermo e permettere l'allineamento centrale corretto.
-	# PRESET_CENTER posizionava l'origine al centro, facendo finire il testo a destra.
-	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_color_override("font_color", Color.RED)
-	label.add_theme_font_size_override("font_size", 64)
-
-	if custom_font:
-		label.add_theme_font_override("font", custom_font)
-
-	death_overlay.add_child(label)
-
-	# Aggiungo l'overlay alla radice per coprire tutto
-	add_child(death_overlay)
-
-# --- Gestione Game Over ---
-
-func game_over():
-	# Attiva lo stato di "Game Over".
-	# Registra la morte, mostra il messaggio, disabilita il gioco normale.
-	if death_manager:
-		death_manager.record_player_death()
-	text.text = tr("game_over_text")
-	enable_choices()
-	if combat_manager: combat_manager.current_entity_health = 0
-	if dialogue_manager: dialogue_manager.reset()
-	b1.text = tr("game_over_choice")
-	b1.show()
-	_clear_signals(b1)
-	b1.pressed.connect(_restart_game)
-	b2.hide()
-	b3.hide()
-
-	# Applica effetti visivi morte
-	# !!! NON RIMUOVERE QUESTE RIGHE !!! Gestiscono il feedback visivo di morte (icona grigia e overlay scuro).
-	if player_icon: player_icon.material = grayscale_material
-	if player_stats: player_stats.material = grayscale_material
-	if death_overlay:
-		var label = death_overlay.get_node_or_null("DeathLabel")
-		if label:
-			label.text = tr("game_over_text")
-		
-		death_overlay.modulate.a = 0.0
-		death_overlay.show()
-		
-		var tween = create_tween()
-		tween.tween_property(death_overlay, "modulate:a", 1.0, 2.0) # Dissolvenza
-
 func _restart_game():
 	# Ripristina lo stato del giocatore per una nuova partita.
-	inventory.clear()
-	equipment.clear()
+	if item_manager:
+		item_manager.reset()
 	
 	# Ricarica i dati originali dal JSON per assicurare un reset pulito delle stats
 	_load_story()
 
 	# Rimuovi effetti visivi morte
-	# !!! NON RIMUOVERE QUESTE RIGHE !!! Ripristinano la grafica normale al riavvio.
-	if player_icon: player_icon.material = null
-	if player_stats: player_stats.material = null
-	if death_overlay: death_overlay.hide()
+	if death_manager: death_manager.clear_death_effects()
 
 	if growth_manager and growth_manager.growth_overlay:
 		growth_manager.growth_overlay.queue_free()
 		growth_manager.growth_overlay = null
 
 	show_scene("start")
-
-func notify_entity_death(entity_id: String):
-	# Notifica al DeathManager che un nemico ├¿ stato sconfitto.
-	if death_manager:
-		death_manager.record_entity_death(entity_id)
-
 func _trigger_haptic():
 	# Feedback tattile universale (funziona solo su mobile)
 	Input.vibrate_handheld(50)

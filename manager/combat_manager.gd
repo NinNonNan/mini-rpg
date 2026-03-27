@@ -108,6 +108,24 @@ func modify_current_entity_energy(type_id: String, amount: int):
 	if type_id == "life":
 		current_entity_health += amount
 
+# =========================================================
+# LOGICA DI DIFESA
+# =========================================================
+
+func get_player_evasion() -> int:
+	# Calcola la % di schivata basata sulle energie "fisiche" attuali del giocatore.
+	var phys_sum = 0
+	var energy_types_def = game.story_data.get("energy_types", {})
+	
+	for type_id in game.player_energy.keys():
+		var def = energy_types_def.get(type_id, {})
+		if def.get("bonus") == "evasion":
+			phys_sum += game.get_player_energy_value(type_id)
+
+	var evasion_chance = phys_sum * 2.0
+	# Cap massimo al 75% per evitare invulnerabilità totale
+	return int(min(evasion_chance, 75))
+
 
 # =========================================================
 # CONFIGURAZIONE PULSANTI COMBATTIMENTO
@@ -646,7 +664,7 @@ func entity_turn():
 	var damage = randi_range(1, max_damage)
 
 	# --- CONTROLLO SCHIVATA ---
-	var evasion_chance = game.get_player_evasion()
+	var evasion_chance = get_player_evasion()
 	# Genera un numero tra 0.0 e 100.0
 	if randf() * 100.0 < float(evasion_chance):
 		game.text.text = game.tr("combat_enemy_miss") % evasion_chance

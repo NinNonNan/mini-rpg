@@ -13,8 +13,8 @@ func save_game():
 		"current_scene": game.current_scene,
 		"player_energy": game.player_energy,
 		"player_max_energy": game.player_max_energy,
-		"inventory": game.inventory,
-		"equipment": game.equipment,
+		"inventory": game.item_manager.inventory if game.item_manager else [],
+		"equipment": game.item_manager.equipment if game.item_manager else {},
 		"current_entity_id": game.current_entity_id,
 		"was_in_combat": game.was_in_combat
 	}
@@ -46,8 +46,11 @@ func load_game() -> bool:
 	if data.has("current_scene"): game.current_scene = data["current_scene"]
 	if data.has("player_energy"): game.player_energy = data["player_energy"]
 	if data.has("player_max_energy"): game.player_max_energy = data["player_max_energy"]
-	if data.has("inventory"): game.inventory = data["inventory"]
-	if data.has("equipment"): game.equipment = data["equipment"]
+	
+	if game.item_manager:
+		if data.has("inventory"): game.item_manager.inventory = data["inventory"]
+		if data.has("equipment"): game.item_manager.equipment = data["equipment"]
+	
 	if data.has("current_entity_id"): game.current_entity_id = data["current_entity_id"]
 	if data.has("was_in_combat"): game.was_in_combat = data["was_in_combat"]
 	

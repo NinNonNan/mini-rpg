@@ -15,6 +15,8 @@ extends Control
 
 # Riferimento al gioco principale.
 var game: Game
+# Riferimento al gestore degli oggetti (senza tipo statico per permettere duck-typing).
+var item_manager
 
 # Riferimenti ai nodi UI generati dinamicamente
 var config_panel: PanelContainer
@@ -32,6 +34,10 @@ func _ready():
 # Apre il menu di configurazione e mette in pausa le interazioni di gioco.
 func open_config_menu():
 	if not game: return
+	
+	# Recupera l'ItemManager se non è già associato (seguendo il pattern $Manager/Item)
+	if not item_manager:
+		item_manager = game.get_node_or_null("Manager/Item")
 	
 	_build_ui()
 	visible = true
@@ -223,23 +229,33 @@ func _build_inventory_tab(container: VBoxContainer):
 	slots_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	container.add_child(slots_grid)
 	
-	for slot_id in game.equipment_slots:
+	# Verifica di sicurezza: se item_manager non è disponibile, usciamo
+	if not item_manager:
+		return
+
+	# Accesso sicuro alle proprietà del Manager tramite get() (1 solo argomento)
+	var equipment = item_manager.get("equipment")
+	if equipment == null: equipment = {}
+	var equipment_slots = item_manager.get("equipment_slots")
+	if equipment_slots == null: equipment_slots = []
+
+	for slot_id in (equipment_slots as Array):
 		var btn = Button.new()
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		var item_id = game.equipment.get(slot_id)
+		var item_id = equipment.get(slot_id)
 		
 		if item_id:
-			var item_name = game.item_manager.get_item_name(item_id) if game.item_manager else item_id
-			var item_icon = game.item_manager.get_item_icon(item_id) if game.item_manager else ""
-			btn.text = tr("stats_equip_slot_filled") % [slot_id, item_icon, item_name]
+			var item_name = item_manager.get_item_name(item_id)
+			var item_icon = item_manager.get_item_icon(item_id)
+			btn.text = tr("stats_equip_slot_filled") % [tr(slot_id), item_icon, item_name]
 			# Click -> Rimuovi
 			btn.pressed.connect(func():
-				game.unequip_item(slot_id)
+				item_manager.unequip_item(slot_id)
 				_build_inventory_tab(container) # Ricarica UI
 			)
 			btn.modulate = Color(0.8, 1, 0.8) # Verdino se equipaggiato
 		else:
-			btn.text = tr("stats_equip_slot_empty") % slot_id
+			btn.text = tr("stats_equip_slot_empty") % tr(slot_id)
 			btn.disabled = true # Disabilita click su slot vuoti (l'equip si fa dall'inventario)
 			btn.modulate = Color(1, 1, 1, 0.5)
 		
@@ -249,8 +265,13 @@ func _build_inventory_tab(container: VBoxContainer):
 	container.add_child(HSeparator.new())
 	
 	# 2. Sezione ZAINO
+	var inventory = item_manager.get("inventory")
+	if inventory == null: inventory = []
+	var item_data = item_manager.get("item_data")
+	if item_data == null: item_data = {}
+
 	var lbl_bag = Label.new()
-	lbl_bag.text = tr("stats_bag_title") % game.inventory.size()
+	lbl_bag.text = tr("stats_bag_title") % (inventory as Array).size()
 	lbl_bag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_apply_font(lbl_bag, 20)
 	container.add_child(lbl_bag)
@@ -263,22 +284,22 @@ func _build_inventory_tab(container: VBoxContainer):
 	bag_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(bag_vbox)
 	
-	if game.inventory.is_empty():
+	if inventory.is_empty():
 		var lbl_empty = Label.new()
 		lbl_empty.text = tr("stats_bag_empty")
 		lbl_empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_apply_font(lbl_empty, 20)
 		bag_vbox.add_child(lbl_empty)
 	else:
-		for i in range(game.inventory.size()):
-			var item_id = game.inventory[i]
-			var item_name = game.item_manager.get_item_name(item_id) if game.item_manager else item_id
-			var item_icon = game.item_manager.get_item_icon(item_id) if game.item_manager else ""
+		for i in range(inventory.size()):
+			var item_id = inventory[i]
+			var item_name = item_manager.get_item_name(item_id)
+			var item_icon = item_manager.get_item_icon(item_id)
 			
 			# Recupera info mani
 			var hands_str = ""
-			if game.item_data.has(item_id) and game.item_data[item_id].has("hands"):
-				hands_str = " (%dH)" % int(game.item_data[item_id]["hands"])
+			if item_data.has(item_id) and item_data[item_id].has("hands"):
+				hands_str = " (%dH)" % int(item_data[item_id]["hands"])
 
 			var row = HBoxContainer.new()
 			bag_vbox.add_child(row)
@@ -290,9 +311,9 @@ func _build_inventory_tab(container: VBoxContainer):
 			row.add_child(lbl)
 			
 			# Recupera i dati dell'oggetto per determinarne il tipo (Consumabile o Equipaggiamento)
-			var item_data = game.item_data.get(item_id, {})
+			var item_props = item_data.get(item_id, {})
 			
-			if item_data.has("restore"):
+			if item_props.has("heal") or item_props.has("restore"):
 				# MECCANICA CONSUMABILI: Se l'oggetto ha dati di ripristino ("restore"), mostriamo "Usa"
 				var btn_use = Button.new()
 				btn_use.text = tr("stats_btn_use")
@@ -316,17 +337,21 @@ func _show_slot_selection(item_id: String, container: VBoxContainer):
 		c.queue_free()
 		
 	var lbl = Label.new()
-	lbl.text = tr("stats_equip_prompt") % item_id
+	var display_name = item_manager.get_item_name(item_id)
+	lbl.text = tr("stats_equip_prompt") % display_name
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_apply_font(lbl, 20)
 	container.add_child(lbl)
 	
-	for slot in game.equipment_slots:
+	var slots = item_manager.get("equipment_slots")
+	if slots == null: slots = []
+
+	for slot in (slots as Array):
 		var btn = Button.new()
-		btn.text = slot
+		btn.text = tr(slot)
 		_apply_font(btn, 20)
 		btn.pressed.connect(func():
-			game.equip_item(item_id, slot)
+			item_manager.equip_item(item_id, slot)
 			_build_inventory_tab(container) # Torna alla lista
 		)
 		container.add_child(btn)
@@ -341,33 +366,13 @@ func _show_slot_selection(item_id: String, container: VBoxContainer):
 
 # Gestisce l'utilizzo di un oggetto consumabile (es. Pozione)
 func _use_item(item_id: String, container: VBoxContainer):
-	if not game: return
+	if not game or not item_manager: return
 	
-	var data = game.item_data.get(item_id, {})
-	# Verifica sicurezza: procedi solo se l'oggetto ha la definizione "restore"
-	if data.has("restore"):
-		var restore_info = data["restore"]
-		var type = restore_info.get("type", "") # Tipo di energia (es. "life", "magic")
-		var value = int(restore_info.get("value", 0)) # Quantità da ripristinare
-		
-		if type != "":
-			# MECCANICA: Aumenta la riserva di energia specificata
-			game.modify_player_energy(type, value)
-			
-			# LOG: Registra l'effetto nel testo principale della storia
-			if game.text:
-				var item_name = game.item_manager.get_item_name(item_id) if game.item_manager else item_id
-				var energy_name = type
-				# Recupera il nome localizzato del tipo di energia (es. "Vita", "Magia") dai dati globali
-				var energy_defs = game.story_data.get("energy_types", {})
-				if energy_defs.has(type):
-					energy_name = tr(energy_defs[type].get("name", type))
-				
-				game.text.text += "\n" + tr("log_consumable_use") % [item_name, value, energy_name]
-			
-			# Rimuove una unità dell'oggetto dall'inventario
-			if item_id in game.inventory:
-				game.inventory.erase(item_id)
-				
-			# Ricarica la scheda inventario per rimuovere la riga dell'oggetto consumato
-			_build_inventory_tab(container)
+	# Delega la logica all'ItemManager e ottiene il messaggio di feedback
+	var feedback = item_manager.use_item(item_id)
+	
+	if game.text:
+		game.text.text += "\n" + feedback
+	
+	# Ricarica la UI
+	_build_inventory_tab(container)
