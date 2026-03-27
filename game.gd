@@ -196,11 +196,12 @@ func _load_translations(lang_code: String = "it"):
 		# Usa concatenazione per evitare crash se tr() fallisce (restituendo la chiave senza %s)
 		push_error(tr("error_translation_file_not_found") + ": " + file_path)
 		return
+
 	var file = FileAccess.open(file_path, FileAccess.READ)
-	var content = file.get_as_text()
+	var json_data = JSON.parse_string(file.get_as_text())
 	file.close()
-	var json_data = JSON.parse_string(content)
-	if json_data != null:
+
+	if typeof(json_data) == TYPE_DICTIONARY and not json_data.is_empty():
 		var translation = Translation.new()
 		translation.locale = lang_code
 		for key in json_data:
