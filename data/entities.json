@@ -21,6 +21,11 @@
 		"type": "chakra",
 		"value": 0,
 		"display_order": 4
+	  },
+	  {
+		"type": "stress",
+		"value": 3,
+		"display_order": 5
 	  }
 	],
 	"affinity": [

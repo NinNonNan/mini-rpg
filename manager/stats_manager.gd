@@ -52,6 +52,15 @@ func initialize_player_stats(player_data: Dictionary):
 				player_energy[type_id] = value
 	stats_changed.emit()
 
+## Restituisce il valore massimo effettivo di una statistica, sottraendo lo stress (se non è lo stress stesso).
+func get_effective_max(type_id: String) -> int:
+	var hard_max = player_max_energy.get(type_id, 0)
+	if type_id == "stress":
+		return hard_max
+	
+	var stress_val = player_energy.get("stress", 0)
+	return maxi(0, hard_max - stress_val)
+
 ## Modifica una statistica del giocatore e gestisce i limiti (min/max).
 ## Input: type_id (String) - ID della statistica; amount (int) - Quantità da aggiungere o sottrarre.
 ## Output: Nessuno.
@@ -59,19 +68,31 @@ func modify_player_energy(type_id: String, amount: int):
 	if not player_energy.has(type_id):
 		return
 
-	var current_value = player_energy[type_id]
-	var max_value = player_max_energy.get(type_id, 0)
-	var new_value = current_value + amount
+	player_energy[type_id] += amount
+	
+	# Se lo stress cambia, dobbiamo ricalcolare i limiti di TUTTE le altre statistiche
+	if type_id == "stress":
+		player_energy["stress"] = maxi(0, player_energy["stress"]) # Lo stress non può essere negativo
+		for e_type in player_energy:
+			if e_type != "stress":
+				_apply_clamping(e_type)
+	else:
+		_apply_clamping(type_id)
 
+	stats_changed.emit()
+
+## Applica il limite (clamping) basato sul massimale effettivo attuale.
+func _apply_clamping(type_id: String):
+	var current_value = player_energy[type_id]
+	var max_effective = get_effective_max(type_id)
+	
 	if type_id == "life":
 		# La vita può scendere sotto lo 0, ma se accade innesca il Game Over.
-		player_energy[type_id] = int(min(new_value, max_value))
+		player_energy[type_id] = int(min(current_value, max_effective))
 		if player_energy.get("life", 0) <= 0:
 			if game and game.death_manager: game.death_manager.handle_game_over()
 	else:
-		player_energy[type_id] = clampi(new_value, 0, max_value)
-
-	stats_changed.emit()
+		player_energy[type_id] = clampi(current_value, 0, max_effective)
 
 ## Inizializzazione del nodo e configurazione del rendering top-level.
 func _ready():
@@ -122,9 +143,7 @@ func _build_ui():
 	if config_panel: config_panel.queue_free()
 	
 	# Sfondo scuro semi-trasparente
-	var bg = ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.8)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var bg = game.ui_manager.create_full_screen_overlay(Color(0, 0, 0, 0.8))
 	add_child(bg)
 	
 	# Pannello principale
@@ -160,6 +179,17 @@ func _build_ui():
 	tabs.add_child(stats_page)
 	
 	_refresh_stats_list()
+	
+	# Pulsante Dormi in fondo alle statistiche
+	var sleep_btn = Button.new()
+	sleep_btn.text = "💤 " + tr("stats_btn_sleep") # Aggiungi traduzione o testo fisso
+	_apply_font(sleep_btn, 20)
+	sleep_btn.pressed.connect(func(): 
+		if game and game.sleep_manager: 
+			close_config_menu()
+			game.sleep_manager.start_minigame()
+	)
+	stats_page.add_child(sleep_btn)
 	
 	# -- TAB 2: Inventario --
 	var inv_page = VBoxContainer.new()

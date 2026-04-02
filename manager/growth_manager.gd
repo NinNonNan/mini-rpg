@@ -97,10 +97,7 @@ func _create_growth_overlay():
 		growth_overlay.queue_free()
 	
 	# Sfondo oscurato che blocca l'input agli elementi sottostanti
-	growth_overlay = ColorRect.new()
-	growth_overlay.color = Color(0, 0, 0, 0.9)
-	growth_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	growth_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	growth_overlay = game.ui_manager.create_full_screen_overlay(Color(0, 0, 0, 0.9))
 	
 	# Contenitore per centrare il menu
 	var center_container = CenterContainer.new()
@@ -135,6 +132,10 @@ func _create_growth_overlay():
 	
 	for energy_stat in player_energy_types:
 		var stat_id = energy_stat.get("type")
+		
+		# Lo stress non può essere modificato durante l'avanzamento
+		if stat_id == "stress": continue
+		
 		var stat_name_key = energy_type_definitions.get(stat_id, {}).get("name", stat_id)
 		
 		var row = HBoxContainer.new()

@@ -79,10 +79,7 @@ func init_ui_effects():
 	grayscale_material.shader = shader
 
 	# 2. Overlay semitrasparente per il box giocatore
-	death_overlay = ColorRect.new()
-	death_overlay.color = Color(0, 0, 0, 0.85) # Sfondo scuro
-	death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	death_overlay = game.ui_manager.create_full_screen_overlay(Color(0, 0, 0, 0.85))
 	death_overlay.gui_input.connect(func(event):
 		if event is InputEventMouseButton and event.pressed:
 			retry_requested.emit()
@@ -102,6 +99,7 @@ func init_ui_effects():
 
 	death_overlay.add_child(label)
 	game.add_child(death_overlay)
+	game.move_child(death_overlay, 0) # Sposta l'overlay dietro ai pulsanti del gioco
 
 ## Gestisce la transizione allo stato di Game Over, attivando UI e logica di ripristino.
 ## Input: Nessuno.

@@ -39,6 +39,8 @@ var current_victory_scene: String = ""
 var pending_spell_id: String = ""
 ## Dati della combo runica calcolata in attesa di selezione bersaglio.
 var pending_rune_data: Dictionary = {}
+## Memorizza i tween attivi per la selezione bersaglio per poterli fermare.
+var _target_tweens: Array[Tween] = []
 
 ## Avvia un nuovo scontro inizializzando i dati del nemico e la UI.
 ## Input: 
@@ -670,10 +672,13 @@ func entity_turn():
 ## Input: action_type (String) - Il tipo elementale dell'azione.
 ## Output: Nessuno.
 func enable_target_selection(action_type: String = ""):
+	# Pulisce eventuali animazioni residue
+	for tw in _target_tweens: if tw: tw.kill()
+	_target_tweens.clear()
+
 	# Rendi i contenitori della UI intercettatori di click per la selezione bersaglio
 	if game.player_box_container:
-		# Colore dinamico: verde se cura (affinità), rosso se danno
-		game.player_box_container.modulate = _get_color_for_effect("player", action_type)
+		var target_color = _get_color_for_effect("player", action_type)
 		game.player_box_container.mouse_filter = Control.MOUSE_FILTER_STOP
 		if not game.player_box_container.gui_input.is_connected(_on_player_target_input):
 			game.player_box_container.gui_input.connect(_on_player_target_input)
@@ -681,18 +686,33 @@ func enable_target_selection(action_type: String = ""):
 		# Disabilitiamo il pulsante config stats affinché non blocchi il click del target
 		var cfg_btn = game.player_box_container.find_child("StatsConfigButton", true, false)
 		if cfg_btn: cfg_btn.mouse_filter = Control.MOUSE_FILTER_PASS
+		
+		# Crea l'animazione pulsante
+		var tw = create_tween().set_loops()
+		tw.tween_property(game.player_box_container, "modulate", target_color, 0.7).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(game.player_box_container, "modulate", Color.WHITE, 0.7).set_trans(Tween.TRANS_SINE)
+		_target_tweens.append(tw)
 	
 	if game.enemy_stats_box:
-		# Colore dinamico per il nemico
-		game.enemy_stats_box.modulate = _get_color_for_effect("enemy", action_type)
+		var target_color = _get_color_for_effect("enemy", action_type)
 		game.enemy_stats_box.mouse_filter = Control.MOUSE_FILTER_STOP
 		if not game.enemy_stats_box.gui_input.is_connected(_on_enemy_target_input):
 			game.enemy_stats_box.gui_input.connect(_on_enemy_target_input)
+
+		# Crea l'animazione pulsante
+		var tw = create_tween().set_loops()
+		tw.tween_property(game.enemy_stats_box, "modulate", target_color, 0.7).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(game.enemy_stats_box, "modulate", Color.WHITE, 0.7).set_trans(Tween.TRANS_SINE)
+		_target_tweens.append(tw)
 
 ## Disabilita il puntamento UI e ripristina l'aspetto normale dei contenitori.
 ## Input: Nessuno.
 ## Output: Nessuno.
 func disable_target_selection():
+	# Ferma e rimuove tutte le animazioni attive
+	for tw in _target_tweens: if tw: tw.kill()
+	_target_tweens.clear()
+
 	if game.player_box_container:
 		game.player_box_container.modulate = Color.WHITE
 		game.player_box_container.mouse_filter = Control.MOUSE_FILTER_PASS

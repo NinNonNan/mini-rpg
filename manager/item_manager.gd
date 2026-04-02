@@ -89,6 +89,14 @@ func get_item_icon(item_id: String) -> String:
 		return item_data[item_id].get("icon", "")
 	return ""
 
+## Restituisce il percorso dell'icona SVG associata all'oggetto definita nel JSON.
+## Input: item_id (String) - ID dell'oggetto.
+## Output: String - Il percorso del file o stringa vuota.
+func get_item_svg(item_id: String) -> String:
+	if item_data.has(item_id):
+		return item_data[item_id].get("svg_icon", "")
+	return ""
+
 ## Restituisce una stringa formattata pronta per la UI (Icona + Nome).
 ## Input: item_id (String) - ID dell'oggetto.
 ## Output: String - Esempio: "🧪 Pozione".
@@ -106,6 +114,20 @@ func get_first_consumable() -> String:
 			return item_id
 	
 	return ""
+
+## Restituisce l'ID dell'arma equipaggiata con il potenziale di danno maggiore.
+## Viene utilizzata per determinare l'icona da mostrare durante i QTE di attacco.
+func get_equipped_weapon_id() -> String:
+	var best_id = ""
+	var max_die = -1
+	for slot in ["stats_hand_right", "stats_hand_left"]:
+		if equipment.has(slot):
+			var item_id = equipment[slot]
+			var item_die = int(item_data.get(item_id, {}).get("damage", 0))
+			if item_die > max_die:
+				max_die = item_die
+				best_id = item_id
+	return best_id
 
 ## Calcola il danno del giocatore analizzando l'arma migliore equipaggiata nelle mani.
 ## La logica sceglie l'arma con il dado di danno più alto (o qualità superiore a parità di dado).

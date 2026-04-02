@@ -34,8 +34,10 @@ extends Control
 @onready var death_manager = $Manager/Death as DeathManager
 @onready var meteo_manager = $Manager/Meteo as MeteoManager
 @onready var rune_manager = $Manager/Rune
+@onready var sleep_manager = $Manager/Sleep
 @onready var stats_manager = $Manager/Stats # Richiede script StatsManager
 @onready var save_manager = $Manager/Save as SaveManager
+@onready var ui_manager = $Manager/UI as UIManager # Verifica che il nodo si chiami "UI" sotto "Manager"
 
 # --- Accessori di Propriet├á (Getter/Setter) ---
 # --- Compatibilit├á (Bridge) ---
@@ -45,21 +47,21 @@ var health: int:
 	get: return get_player_energy_value("life")
 	set(value): modify_player_energy("life", value - get_player_energy_value("life"))
 var max_health: int:
-	get: return stats_manager.player_max_energy.get("life", 0) if stats_manager else 0
+	get: return stats_manager.get_effective_max("life") if stats_manager else 0
 	set(value): if stats_manager: stats_manager.player_max_energy["life"] = value
 
 var mana: int:
 	get: return get_player_energy_value("magic")
 	set(value): modify_player_energy("magic", value - get_player_energy_value("magic"))
 var max_mana: int:
-	get: return stats_manager.player_max_energy.get("magic", 0) if stats_manager else 0
+	get: return stats_manager.get_effective_max("magic") if stats_manager else 0
 	set(value): if stats_manager: stats_manager.player_max_energy["magic"] = value
 
 var mood: int:
 	get: return get_player_energy_value("mood")
 	set(value): modify_player_energy("mood", value - get_player_energy_value("mood"))
 var max_mood: int:
-	get: return stats_manager.player_max_energy.get("mood", 0) if stats_manager else 0
+	get: return stats_manager.get_effective_max("mood") if stats_manager else 0
 	set(value): if stats_manager: stats_manager.player_max_energy["mood"] = value
 
 # --- Variabili di Flusso ---
@@ -117,7 +119,7 @@ func _ready():
 	else:
 		stats_manager.stats_changed.connect(update_stats)
 	if not save_manager:
-		push_warning("SaveManager non trovato in $Manager/Save")
+		push_warning(tr("warn_save_manager_missing"))
 
 	# Impostazioni grafica
 	#text.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_FILL
@@ -131,13 +133,20 @@ func _ready():
 
 	# Iniezione Game nei manager
 	# Fornisce ai manager un riferimento a questo script principale per callback e accesso ai dati
-	for mgr in [qte, combat_manager, data_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager, rune_manager]:
+	for mgr in [qte, combat_manager, data_manager, item_manager, dialogue_manager, empathy_manager, special_manager, growth_manager, death_manager, meteo_manager, stats_manager, save_manager, rune_manager, sleep_manager, ui_manager]:
 		if mgr:
 			mgr.game = self
 	
+	if ui_manager:
+		if ui_manager.game == null:
+			ui_manager.game = self
+		ui_manager._init_ui_references()
+	else:
+		push_error(tr("error_ui_manager_missing"))
+
 	# Debug check per item_manager
 	if not item_manager:
-		push_error("ERRORE CRITICO: ItemManager non è stato inizializzato correttamente in Game.gd!")
+		push_error(tr("error_item_manager_init"))
 
 	# Connessione RuneManager
 	if rune_manager:
@@ -146,7 +155,12 @@ func _ready():
 
 	# Connessione DialogueManager
 	if dialogue_manager:
-		dialogue_manager.text_requested.connect(func(t): text.text = t)
+		dialogue_manager.text_requested.connect(func(t): 
+			if ui_manager: 
+				ui_manager.set_story_text_animated(t)
+			else:
+				text.text = t
+		)
 		dialogue_manager.choices_requested.connect(_on_dialogue_choices_requested)
 		# Aggiorna le statistiche quando cambiano durante un dialogo (es. Umore)
 		dialogue_manager.stats_updated.connect(update_stats)
@@ -169,7 +183,7 @@ func _ready():
 # --- Caricamento JSON ---
 func _load_story():
 	if not data_manager:
-		push_error("DataManager non trovato!")
+		push_error(tr("error_data_manager_missing"))
 		return
 	
 	# Delega il caricamento e sincronizza i riferimenti locali (Bridge)
@@ -193,13 +207,16 @@ func _load_translations(lang_code: String = "it"):
 	# ATTENZIONE: Percorso fisso per le traduzioni in res://data/. NON MODIFICARE.
 	var file_path = "res://data/%s.json" % lang_code
 	if not FileAccess.file_exists(file_path):
-		# Usa concatenazione per evitare crash se tr() fallisce (restituendo la chiave senza %s)
-		push_error(tr("error_translation_file_not_found") + ": " + file_path)
+		push_error(tr("error_tr_file_not_found") % file_path)
 		return
 
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	var json_data = JSON.parse_string(file.get_as_text())
 	file.close()
+
+	if json_data == null:
+		push_error(tr("error_tr_json_syntax") % file_path)
+		return
 
 	if typeof(json_data) == TYPE_DICTIONARY and not json_data.is_empty():
 		var translation = Translation.new()
@@ -230,7 +247,10 @@ func get_energy_string(type_id: String, amount: int, max_amount: int = -1) -> St
 
 	var value_str = str(amount)
 	if max_amount >= 0:
-		value_str = "%d/%d" % [amount, max_amount]
+		if type_id == "stress":
+			value_str = "%d/∞" % amount
+		else:
+			value_str = "%d/%d" % [amount, max_amount]
 	
 	# Usa la rappresentazione visiva (icona) se abilitata, altrimenti testo.
 	if use_visual_health and icon:
@@ -267,18 +287,21 @@ func update_stats():
 
 	# Aggiorna UI nemico
 	var entity_text = ""
-	if combat_manager and combat_manager.current_entity_health > 0:
-		entity_text = tr("stats_enemy_hp") % get_health_string(combat_manager.current_entity_health)
-	elif dialogue_manager and dialogue_manager.is_active:
-		pass
-	elif current_entity_id != "" and empathy_manager and empathy_manager.is_known:
-		var entity = entity_data.get(current_entity_id, {})
-		var hp = 0
-		if entity.has("energy"):
-			for stat in entity["energy"]:
-				if stat.get("type") == "life":
-					hp = int(stat.get("value", 0))
-		entity_text = tr("stats_enemy_hp") % get_health_string(hp)
+	if current_entity_id != "":
+		var entity_hp = 0
+		var hp_revealed = false
+		if combat_manager and combat_manager.current_entity_id == current_entity_id:
+			entity_hp = combat_manager.current_entity_health
+			hp_revealed = true
+		elif empathy_manager and empathy_manager.is_known:
+			var entity = entity_data.get(current_entity_id, {})
+			if entity.has("energy"):
+				for stat in entity["energy"]:
+					if stat.get("type") == "life":
+						entity_hp = int(stat.get("value", 0))
+						hp_revealed = true
+		if hp_revealed:
+			entity_text = _tr_format("stats_enemy_hp", get_energy_string("life", entity_hp))
 	
 	# Aggiorna UI giocatore
 	if player_stats:
@@ -295,28 +318,21 @@ func update_stats():
 			var type_id = stat_def.get("type")
 			if type_id:
 				var current_value = get_player_energy_value(type_id)
-				var max_value = stats_manager.player_max_energy.get(type_id, 0) if stats_manager else 0
+				var max_value = stats_manager.get_effective_max(type_id) if stats_manager else 0
 				stats_lines.append(get_energy_string(type_id, current_value, max_value))
 		
 		# Aggiungi l'inventario
-		var inv_line: String
-		if use_visual_health:
-			inv_line = "­ƒÄÆ %s" % inv_str
-		else:
-			inv_line = "%s %s" % [tr("stats_inventory_prefix"), inv_str]
+		var inv_key = "stats_inventory_visual_prefix" if use_visual_health else "stats_inventory_prefix"
+		var inv_line = _tr_format(inv_key, inv_str)
+		
 		stats_lines.append(inv_line)
 
 		player_stats.text = "\n".join(stats_lines)
 
 	if enemy_stats_box and enemy_stats:
-		enemy_stats.text = entity_text
-		if enemy_icon:
-			var icon_path = entity_data.get(current_entity_id, {}).get("icon", "")
-			if icon_path != "":
-				enemy_icon.texture = load(icon_path)
-			else:
-				enemy_icon.texture = null
-		enemy_stats_box.visible = true
+		enemy_stats.text = entity_text if entity_text != "" else tr("stats_enemy_hp_unknown")
+		enemy_icon.texture = load(entity_data.get(current_entity_id, {}).get("icon", "")) if current_entity_id != "" else null
+		enemy_stats_box.visible = (current_entity_id != "")
 
 # Funzione deprecata ma mantenuta per compatibilit├á interna
 func get_health_string(amount: int) -> String:
@@ -346,7 +362,11 @@ func show_scene(scene_name):
 	if dialogue_manager: dialogue_manager.reset()
 	var scene = story[scene_name]
 	# Imposta il testo principale usando le traduzioni
-	text.text = tr(scene["text"])
+	if ui_manager:
+		ui_manager.set_story_text_animated(tr(scene["text"]))
+	else:
+		text.text = tr(scene["text"])
+
 	update_stats()
 
 	var buttons = [b1, b2, b3]
@@ -372,29 +392,46 @@ func handle_choice(choice):
 				# Raccoglie un oggetto
 				var item_id = choice.get("item_id", "")
 				if item_manager and item_manager.add_item(item_id):
-					text.text = tr("item_picked_up") % [item_manager.get_display_name(item_id)]
+					var msg = _tr_format("item_picked_up", item_manager.get_display_name(item_id))
+					if ui_manager:
+						ui_manager.set_story_text_animated(msg)
+					else:
+						text.text = msg
 					update_stats()
 			"qte":
-				# Avvia un Quick Time Event
 				start_qte_event()
 			"combat":
-				# Prepara e avvia il combattimento
 				current_entity_id = choice.get("entity_id", "")
 				current_victory_scene = choice.get("victory_scene", "")
 				_start_prepared_combat()
 			"dialogue":
-				# Prepara e avvia il dialogo
 				current_entity_id = choice.get("entity_id", "")
 				current_victory_scene = choice.get("victory_scene", "")
 				if entity_data.has(current_entity_id):
 					current_entity_pronoun = entity_data[current_entity_id].get("pronoun", "")
 				_start_prepared_dialogue()
 			"runes":
-				# Avvia il minigioco delle rune
 				if rune_manager:
 					rune_manager.start_rune_casting()
+
 	if choice.has("next"):
 		show_scene(choice["next"])
+
+## Helper per formattare traduzioni con parametri in modo sicuro senza hardcoding.
+func _tr_format(key: String, arg) -> String:
+	var template = tr(key)
+	if "%s" in template:
+		return template % arg
+	
+	# Se manca il segnaposto, riportiamo l'errore usando una chiave di traduzione.
+	# Usiamo direttamente tr() % arg per evitare ricorsione infinita con _tr_format.
+	var err_tpl = tr("error_tr_placeholder_missing")
+	if "%s" in err_tpl:
+		push_error(err_tpl % key)
+	else:
+		push_error(err_tpl)
+	
+	return template
 
 func start_qte_event(message_key: String = "qte_start_default", context: String = ""):
 	# Avvia l'interfaccia del QTE tramite il relativo manager

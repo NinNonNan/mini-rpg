@@ -27,6 +27,7 @@ var player_stats
 var grayscale_material: ShaderMaterial
 var death_overlay: ColorRect
 var growth_overlay: Control = null
+var _typing_id: int = 0
 
 func _ready():
 	# L'inizializzazione viene chiamata esplicitamente da game.gd
@@ -37,6 +38,24 @@ func set_story_text(val: String):
 
 func add_story_text(val: String):
 	if text: text.text += "\n" + val
+
+## Imposta il testo della storia con un effetto macchina da scrivere.
+func set_story_text_animated(val: String, char_delay: float = 0.015):
+	if not text: return
+	_typing_id += 1
+	var current_id = _typing_id
+	
+	text.visible_characters = 0
+	text.text = val
+	
+	var total_chars = val.length()
+	for i in range(total_chars):
+		if _typing_id != current_id: return # Interrompe se è partita una nuova animazione
+		text.visible_characters += 1
+		await game.get_tree().create_timer(char_delay).timeout
+	
+	if _typing_id == current_id:
+		text.visible_characters = -1 # Assicura che tutto il testo sia visibile alla fine
 
 func setup_choices(choices: Array, callback: Callable):
 	var buttons = [game.scene_manager.b1, game.scene_manager.b2, game.scene_manager.b3]
@@ -137,7 +156,7 @@ func _update_enemy_stats():
 	if not enemy_stats_box or not enemy_icon or not enemy_stats:
 		return
 
-	if game.combat_manager and game.combat_manager.current_entity_health > 0:
+	if game.combat_manager and game.combat_manager.current_entity_id != "":
 		enemy_stats_box.show()
 
 		var entity_data = game.data_manager.get_entity_data(game.combat_manager.current_entity_id)
@@ -160,10 +179,6 @@ func show_death_effects():
 
 	_create_death_overlay()
 	game.add_child(death_overlay)
-	
-	var label = death_overlay.get_node("DeathLabel")
-	if label:
-		label.text = tr("game_over_title")
 
 func hide_death_effects():
 	# Rimuove gli effetti visivi di morte
@@ -202,15 +217,33 @@ func _init_ui_references():
 	grayscale_material = ShaderMaterial.new()
 	grayscale_material.shader = shader
 
-func _create_death_overlay():
-	# Crea l'overlay scuro per la morte
-	if death_overlay: return
+## Crea un overlay a pieno schermo con colore opzionale e/o effetto sfocatura.
+func create_full_screen_overlay(base_color: Color = Color(0, 0, 0, 0.8), use_blur: bool = false) -> ColorRect:
+	var overlay = ColorRect.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	
-	death_overlay = ColorRect.new()
-	death_overlay.color = Color(0, 0, 0, 0.85)
-	death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	if use_blur:
+		var blur_mat = ShaderMaterial.new()
+		var blur_shader = Shader.new()
+		blur_shader.code = """
+			shader_type canvas_item;
+			uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
+			void fragment() {
+				vec3 screen = textureLod(screen_texture, SCREEN_UV, 15.0).rgb;
+				COLOR = vec4(screen * 0.25, 0.9);
+			}
+		"""
+		blur_mat.shader = blur_shader
+		overlay.material = blur_mat
+	else:
+		overlay.color = base_color
+		
+	return overlay
 
+func _create_death_overlay():
+	if death_overlay: return
+	death_overlay = create_full_screen_overlay(Color(0, 0, 0, 0.85))
 	var label = Label.new()
 	label.name = "DeathLabel"
 	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

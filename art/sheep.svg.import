@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b480gg63lcp0u"
-path="res://.godot/imported/E347.svg-55e1b7d261f77b6c4869e5438fab17e9.ctex"
+uid="uid://cb82iy5ojsn6j"
+path="res://.godot/imported/sheep.svg-83a4035a77ebe491c1728631e9d611bc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/E347.svg"
-dest_files=["res://.godot/imported/E347.svg-55e1b7d261f77b6c4869e5438fab17e9.ctex"]
+source_file="res://art/sheep.svg"
+dest_files=["res://.godot/imported/sheep.svg-83a4035a77ebe491c1728631e9d611bc.ctex"]
 
 [params]
 

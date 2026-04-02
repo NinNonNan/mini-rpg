@@ -5,7 +5,9 @@
 		"damage": 4.0,
 		"quality": 1.0,
 		"type": "taglio",
-		"hands": 1
+		"hands": 1,
+		"svg_icon": "res://art/sword.svg",
+		"weight": 2.0
 	},
 	"ascia": {
 		"name": "item_axe",
@@ -13,7 +15,9 @@
 		"damage": 6.0,
 		"quality": 0.0,
 		"type": "taglio",
-		"hands": 2
+		"hands": 2,
+		"svg_icon": "res://art/axe.svg",
+		"weight": 5.0
 	},
 	"torcia": {
 		"name": "item_torch",
@@ -21,7 +25,9 @@
 		"damage": 0.0,
 		"quality": 3.0,
 		"type": "fuoco",
-		"hands": 1
+		"hands": 1,
+		"svg_icon": "res://art/torcia.svg",
+		"weight": 1.0
 	},
 	"pozione": {
 		"name": "item_potion",
@@ -32,6 +38,8 @@
 		},
 		"quality": 2.0,
 		"consumable": true,
-		"hands": 1
+		"hands": 1,
+		"svg_icon": "res://art/pozione.svg",
+		"weight": 0.5
 	}
 }

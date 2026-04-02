@@ -1,26 +1,21 @@
-# =========================================================
-# SPECIAL MANAGER
-# =========================================================
-# Gestisce le abilità speciali (Magie) del giocatore.
-#
-# Funzionalità principali:
-# - Recupero dati delle magie da definitions.json (via story_data).
-# - Verifica del costo in Mana (MP).
-# - Esecuzione dell'effetto (Danno elementale o Cura).
-# - Calcolo delle interazioni elementali (Debolezze/Affinità).
-#
-# A differenza del RuneManager (che è un minigioco), questo manager
-# gestisce le abilità attivabili direttamente da menu.
-
+## Gestisce le abilità speciali (Magie) del giocatore.
+##
+## Funzionalità principali:
+## - Recupero dati delle magie da definitions.json (via story_data).
+## - Verifica del costo in Mana (MP).
+## - Esecuzione dell'effetto (Danno elementale o Cura).
+## - Calcolo delle interazioni elementali (Debolezze/Affinità).
+##
+## A differenza del RuneManager (che è un minigioco), questo manager
+## gestisce le abilità attivabili direttamente da menu.
 class_name SpecialManager
 extends Node
 
-# Riferimento al gioco principale.
-# Iniettato da Game.gd in _ready().
+## Riferimento al gioco principale. Iniettato da Game.gd in _ready().
 var game: Game
 
-# Proprietà calcolata per ottenere il dizionario delle magie.
-# Recupera i dati da game.story_data["spells"].
+## Proprietà calcolata per ottenere il dizionario delle magie.
+## Recupera i dati da game.story_data["spells"].
 var spells: Dictionary:
 	get:
 		if game:
@@ -38,12 +33,12 @@ var spells: Dictionary:
 # HELPER
 # =========================================================
 
-# Restituisce il dizionario dati di una specifica magia.
+## Restituisce il dizionario dati di una specifica magia.
 func get_spell_data(spell_id: String) -> Dictionary:
 	return spells.get(spell_id, {})
 
-# Verifica se il giocatore ha abbastanza mana per lanciare la magia.
-# Chiamato dalla UI prima di abilitare il pulsante o eseguire l'azione.
+## Verifica se il giocatore ha abbastanza mana per lanciare la magia.
+## Chiamato dalla UI prima di abilitare il pulsante o eseguire l'azione.
 func has_enough_mana(spell_id: String) -> bool:
 	var spell = get_spell_data(spell_id)
 	if not spell: return false
@@ -57,8 +52,8 @@ func has_enough_mana(spell_id: String) -> bool:
 # ESECUZIONE MAGIA
 # =========================================================
 
-# Esegue l'abilità, consuma risorse e applica gli effetti.
-# Restituisce una stringa descrittiva (già tradotta) per il log di gioco.
+## Esegue l'abilità, consuma risorse e applica gli effetti.
+## Restituisce una stringa descrittiva (già tradotta) per il log di gioco.
 func use_spell(spell_id: String, target_entity_id: String) -> String:
 	var spell = get_spell_data(spell_id)
 	if not spell: return ""

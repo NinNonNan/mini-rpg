@@ -1,26 +1,21 @@
-# =========================================================
-# SCENE MANAGER
-# =========================================================
-# Gestisce la navigazione tra scene e la logica delle scelte:
-# - Transizioni di scena
-# - Gestione delle scelte del giocatore
-# - Preparazione combattimenti e dialoghi
-# - Integrazione con QTE e sistemi di rune
-
+## Gestisce la navigazione tra scene e la logica delle scelte.
+##
+## Include transizioni, gestione delle scelte, preparazione ai combattimenti/dialoghi
+## e l'integrazione con i sistemi QTE e Rune.
 class_name SceneManager
 extends Node
 
-# Riferimento al game principale
+## Riferimento al game principale.
 var game
 
-# Stato corrente
+## Stato corrente del manager.
 var current_scene: String = "start"
 var was_in_combat: bool = false
 var current_entity_id: String = ""
 var current_victory_scene: String = ""
 var current_entity_pronoun: String = ""
 
-# Riferimenti UI per i pulsanti (inizializzati nel _ready)
+## Riferimenti UI per i pulsanti (inizializzati nel _ready).
 var b1
 var b2
 var b3
@@ -28,8 +23,8 @@ var b3
 func _ready():
 	_init_ui_references()
 
+## Carica e visualizza una nuova scena, gestendo i trigger di morte entità e auto-salvataggio.
 func show_scene(scene_name: String):
-	# Carica e visualizza una nuova scena
 	# Rileva la sconfitta di un'entità in combattimento
 	if was_in_combat and current_entity_id != "" and scene_name == current_victory_scene:
 		_notify_entity_death(current_entity_id)
@@ -77,8 +72,8 @@ func show_scene(scene_name: String):
 		else:
 			buttons[i].hide()
 
+## Esegue la logica associata a una scelta del giocatore (azione o cambio scena).
 func handle_choice(choice: Dictionary):
-	# Esegue la logica associata a una scelta del giocatore
 	# Feedback aptico
 	Input.vibrate_handheld(50)
 
@@ -98,8 +93,8 @@ func handle_choice(choice: Dictionary):
 	if choice.has("next"):
 		show_scene(choice["next"])
 
+## Gestisce la raccolta di un oggetto e aggiorna l'interfaccia.
 func _handle_item_pickup(choice: Dictionary):
-	# Gestisce il pickup di un item
 	var item_id = choice.get("item_id", "")
 	if not game.player_manager.has_item(item_id):
 		game.player_manager.add_item(item_id)
@@ -109,38 +104,38 @@ func _handle_item_pickup(choice: Dictionary):
 		game.ui_manager.text.text = tr("item_picked_up") % [display_name]
 		game.ui_manager.update_stats()
 
+## Avvia un Quick Time Event richiamando il metodo nel gioco principale.
 func _start_qte():
-	# Avvia un Quick Time Event
 	if game and game.has_method("start_qte_event"):
 		game.start_qte_event()
 
+## Prepara i parametri per l'inizio di uno scontro.
 func _prepare_combat(choice: Dictionary):
-	# Prepara e avvia il combattimento
 	current_entity_id = choice.get("entity_id", "")
 	current_victory_scene = choice.get("victory_scene", "")
 	_start_prepared_combat()
 
+## Prepara i parametri per l'inizio di un dialogo.
 func _prepare_dialogue(choice: Dictionary):
-	# Prepara e avvia il dialogo
 	current_entity_id = choice.get("entity_id", "")
 	current_victory_scene = choice.get("victory_scene", "")
 	var entity_data = game.data_manager.get_entity_data(current_entity_id)
 	current_entity_pronoun = entity_data.get("pronoun", "")
 	_start_prepared_dialogue()
 
+## Avvia il minigioco delle rune tramite il RuneManager.
 func _start_rune_casting():
-	# Avvia il minigioco delle rune
 	if game.rune_manager:
 		game.rune_manager.start_rune_casting()
 
+## Avvia il combattimento con l'entità precedentemente preparata.
 func _start_prepared_combat():
-	# Avvia il combattimento con l'entità preparata
 	if game.combat_manager:
 		was_in_combat = true
 		game.combat_manager.start_combat(current_entity_id, current_victory_scene)
 
+## Avvia il dialogo con l'entità precedentemente preparata.
 func _start_prepared_dialogue():
-	# Avvia il dialogo con l'entità preparata
 	if game.dialogue_manager:
 		was_in_combat = false
 		game.dialogue_manager.start_dialogue(current_entity_id, current_entity_pronoun, 0, current_victory_scene)
@@ -150,14 +145,14 @@ func _notify_entity_death(entity_id: String):
 	# Questa funzione dovrebbe essere implementata secondo le esigenze specifiche del gioco
 	pass
 
+## Rimuove tutte le connessioni esistenti dal segnale 'pressed' di un pulsante.
 func _clear_signals(button: Button):
-	# Rimuove tutti i segnali connessi a un pulsante
 	var connections = button.pressed.get_connections()
 	for connection in connections:
 		button.pressed.disconnect(connection["callable"])
 
+## Inizializza i riferimenti ai pulsanti della scena principale.
 func _init_ui_references():
-	# Inizializza i riferimenti ai nodi UI
 	if not game:
 		push_error("SceneManager: game reference not set!")
 		return

@@ -27,7 +27,7 @@ func start_event(message_key: String = "qte_start_default", ctx: String = ""):
 	# 2. Avvia il calcolo della velocità e il loop interattivo
 	start_for_entity(game.b1, game.current_entity_id, game.entity_data, power_multiplier)
 
-func start_for_entity(target_button: Button, entity_id: String, entity_data: Dictionary, power_multiplier: float):
+func start_for_entity(target_button: Button, entity_id: String, entity_data: Dictionary, p_multiplier: float):
 	var calculated_speed: float = 1.0
 	
 	if entity_id != "" and entity_data.has(entity_id):
@@ -37,7 +37,7 @@ func start_for_entity(target_button: Button, entity_id: String, entity_data: Dic
 			for stat in entity["energy"]:
 				total_energy += float(stat.get("value", 0))
 		if total_energy > 0:
-			calculated_speed = total_energy * power_multiplier
+			calculated_speed = total_energy * p_multiplier
 
 	# Avviamo il QTE interattivo
 	start(target_button, calculated_speed)
@@ -78,13 +78,24 @@ func _process(delta):
 	
 	# Calcolo fattore accuratezza (1.0 al centro, 0.0 ai bordi)
 	var accuracy_factor = 1.0 - (abs(current_value - 0.5) * 2.0)
-	var dynamic_color = Color.RED.lerp(Color.GREEN, accuracy_factor)
+	
+	# Nuova palette morbida: Estremi (#5a1f1f) -> Medio (#6b6b2a) -> Centro (#d4c48a)
+	var color_ext = Color("#5a1f1f")
+	var color_mid = Color("#6b6b2a")
+	var color_ctr = Color("#d4c48a")
+	var dynamic_color: Color
+	if accuracy_factor < 0.5:
+		dynamic_color = color_ext.lerp(color_mid, accuracy_factor * 2.0)
+	else:
+		dynamic_color = color_mid.lerp(color_ctr, (accuracy_factor - 0.5) * 2.0)
 	
 	# Applichiamo il colore allo sfondo della barra
 	if bar_container:
-		var sb = bar_container.get_theme_stylebox("normal").duplicate()
-		sb.bg_color = dynamic_color
-		bar_container.add_theme_stylebox_override("normal", sb)
+		# Accediamo allo StyleBox sovrascritto. Non usiamo .duplicate() per 
+		# modificare direttamente la risorsa condivisa tra gli stati (normal, hover, pressed).
+		var sb = bar_container.get_theme_stylebox("normal") as StyleBoxFlat
+		if sb:
+			sb.bg_color = dynamic_color
 	
 	# Aggiorna la posizione visiva del cursore
 	if cursor_sprite and bar_container:
@@ -117,7 +128,17 @@ func _create_visual_bar():
 	# Cursore SVG
 	cursor_sprite = TextureRect.new()
 	bar_container.add_child(cursor_sprite)
-	cursor_sprite.texture = load("res://art/cursor.svg")
+	
+	# Determina l'icona: usa l'arma equipaggiata se disponibile, altrimenti il cursore di default
+	var icon_path = "res://art/cursor.svg"
+	if game.item_manager:
+		var weapon_id = game.item_manager.get_equipped_weapon_id()
+		if weapon_id != "":
+			var svg_path = game.item_manager.get_item_svg(weapon_id)
+			if svg_path != "" and FileAccess.file_exists(svg_path):
+				icon_path = svg_path
+	
+	cursor_sprite.texture = load(icon_path)
 	cursor_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	cursor_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	

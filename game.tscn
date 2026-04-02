@@ -15,6 +15,8 @@
 [ext_resource type="Script" uid="uid://bdhqckafmw8k5" path="res://manager/meteo_manager.gd" id="11_mfdv2"]
 [ext_resource type="Script" uid="uid://b04gpwp1lwtq4" path="res://manager/rune_manager.gd" id="12_iotsf"]
 [ext_resource type="Script" uid="uid://b3doqkdmv851b" path="res://manager/stats_manager.gd" id="13_lc2xo"]
+[ext_resource type="Script" uid="uid://b5ucwj3d3rgb8" path="res://manager/sleep_manager.gd" id="16_80cx4"]
+[ext_resource type="Script" uid="uid://cni8ow61ayofx" path="res://manager/ui_manager.gd" id="17_e8heu"]
 
 [sub_resource type="Theme" id="Theme_80nbo"]
 
@@ -90,7 +92,7 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="MC_Story" type="MarginContainer" parent="UI/VBC_Main" unique_id=2088841522]
-custom_minimum_size = Vector2(0, 200)
+custom_minimum_size = Vector2(0, 400)
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 10
@@ -289,3 +291,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("13_lc2xo")
+
+[node name="Sleep" type="Node" parent="Manager" unique_id=1901863327]
+script = ExtResource("16_80cx4")
+
+[node name="UI" type="Node" parent="Manager" unique_id=1421268345]
+script = ExtResource("17_e8heu")
